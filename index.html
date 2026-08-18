@@ -1403,24 +1403,38 @@ function chipSet(containerId, options, filterKey) {
   });
 }
 
+// Called every time populateFilterOptions() runs (init, clearFilters, import,
+// restore) with a fresh `options` list, but the underlying DOM elements
+// (button/panel/search box) persist across calls. Click listeners must only
+// be wired ONCE per element — otherwise they stack up on the same button and
+// a single click fires several open/close toggles back-to-back, which cancel
+// each other out (panel flashes open then immediately closes). Current
+// options/filterKey are stashed on the panel element itself so the
+// once-wired listeners always see fresh data instead of a stale closure.
 function searchDropdown(btnId, panelId, searchId, listId, options, filterKey, labelPrefix, dropdownOpts) {
-  dropdownOpts = dropdownOpts || {};
   const btn = document.getElementById(btnId);
   const panel = document.getElementById(panelId);
   const search = document.getElementById(searchId);
   const list = document.getElementById(listId);
 
+  panel._ddOptions = options;
+  panel._ddFilterKey = filterKey;
+  panel._ddLabelPrefix = labelPrefix;
+  panel._ddOpts = dropdownOpts || {};
+
   function renderList(q) {
     list.innerHTML = '';
     const ql = (q || '').toLowerCase();
-    options.filter(o => o.label.toLowerCase().includes(ql)).forEach(o => {
-      const checked = filters[filterKey].includes(o.value);
+    const curOptions = panel._ddOptions;
+    const curKey = panel._ddFilterKey;
+    curOptions.filter(o => o.label.toLowerCase().includes(ql)).forEach(o => {
+      const checked = filters[curKey].includes(o.value);
       const lab = el(`<label class="opt"><input type="checkbox" ${checked ? 'checked' : ''}/> <span>${esc(o.label)}</span></label>`);
       lab.querySelector('input').addEventListener('change', (e) => {
-        const arr = filters[filterKey];
+        const arr = filters[curKey];
         if (e.target.checked) { if (!arr.includes(o.value)) arr.push(o.value); }
         else { const i = arr.indexOf(o.value); if (i >= 0) arr.splice(i, 1); }
-        if (dropdownOpts.clearDatesOnSelect && e.target.checked) {
+        if (panel._ddOpts.clearDatesOnSelect && e.target.checked) {
           filters.dateFrom = null; filters.dateTo = null;
           document.getElementById('dateFrom').value = ''; document.getElementById('dateTo').value = '';
         }
@@ -1431,18 +1445,22 @@ function searchDropdown(btnId, panelId, searchId, listId, options, filterKey, la
     });
   }
   function updateBtnLabel() {
-    const n = filters[filterKey].length;
-    btn.querySelector('.dd-label').textContent = n ? `${labelPrefix} (${n})` : labelPrefix;
+    const n = filters[panel._ddFilterKey].length;
+    btn.querySelector('.dd-label').textContent = n ? `${panel._ddLabelPrefix} (${n})` : panel._ddLabelPrefix;
   }
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const open = panel.style.display === 'block';
-    document.querySelectorAll('.dropdown-panel').forEach(p => p.style.display = 'none');
-    panel.style.display = open ? 'none' : 'block';
-    if (!open) { search.value = ''; renderList(''); search.focus(); }
-  });
-  search.addEventListener('input', () => renderList(search.value));
-  document.addEventListener('click', (e) => { if (!panel.contains(e.target) && e.target !== btn) panel.style.display = 'none'; });
+
+  if (!btn.dataset.wired) {
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = panel.style.display === 'block';
+      document.querySelectorAll('.dropdown-panel').forEach(p => p.style.display = 'none');
+      panel.style.display = open ? 'none' : 'block';
+      if (!open) { search.value = ''; renderList(''); search.focus(); }
+    });
+    search.addEventListener('input', () => renderList(search.value));
+    document.addEventListener('click', (e) => { if (!panel.contains(e.target) && e.target !== btn) panel.style.display = 'none'; });
+  }
   renderList('');
   updateBtnLabel();
 }
