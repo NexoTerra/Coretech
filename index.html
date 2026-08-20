@@ -1709,10 +1709,66 @@ if (typeof module !== 'undefined') {
 (function () {
 'use strict';
 
+// Pure-JS SHA-256 (no dependency on window.crypto.subtle, which the browser
+// disables outside a "secure context" — i.e. it silently breaks over plain
+// http://, which is exactly what made the login button appear to do nothing).
+const SHA256_K = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+];
+function sha256Sync(text) {
+  const bytes = new TextEncoder().encode(text);
+  const bitLen = bytes.length * 8;
+  const withOne = new Uint8Array(((bytes.length + 9 + 63) >> 6) << 6);
+  withOne.set(bytes);
+  withOne[bytes.length] = 0x80;
+  const dv = new DataView(withOne.buffer);
+  dv.setUint32(withOne.length - 4, bitLen >>> 0);
+  dv.setUint32(withOne.length - 8, Math.floor(bitLen / 4294967296));
+
+  let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
+  let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+  const w = new Uint32Array(64);
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+
+  for (let off = 0; off < withOne.length; off += 64) {
+    for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+    }
+    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (h + S1 + ch + SHA256_K[i] + w[i]) | 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) | 0;
+      h = g; g = f; f = e; e = (d + t1) | 0;
+      d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0;
+    h4 = (h4 + e) | 0; h5 = (h5 + f) | 0; h6 = (h6 + g) | 0; h7 = (h7 + h) | 0;
+  }
+  return [h0, h1, h2, h3, h4, h5, h6, h7].map(n => (n >>> 0).toString(16).padStart(8, '0')).join('');
+}
 async function sha256Hex(text) {
-  const enc = new TextEncoder().encode(text);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  if (window.crypto && window.crypto.subtle && window.isSecureContext) {
+    try {
+      const enc = new TextEncoder().encode(text);
+      const buf = await window.crypto.subtle.digest('SHA-256', enc);
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) { /* fall through to the pure-JS implementation below */ }
+  }
+  return sha256Sync(text);
 }
 
 const DEFAULT_USERS = [
@@ -2403,13 +2459,18 @@ async function handleAddUser(e) {
   if (!email || !password) { status.textContent = 'Correo y contraseña son obligatorios.'; status.className = 'import-status err'; status.style.display = 'block'; return; }
   const users = CTAuth.loadUsers();
   if (users.some(u => u.email.toLowerCase() === email)) { status.textContent = 'Ya existe un usuario con ese correo.'; status.className = 'import-status err'; status.style.display = 'block'; return; }
-  const hash = await CTAuth.sha256Hex(password);
-  users.push({ email, hash, role });
-  CTAuth.saveUsers(users);
-  emailInput.value = ''; passInput.value = '';
-  status.textContent = `Usuario ${email} agregado (${role === 'admin' ? 'Administrador' : 'Visualizador'}). Guardado solo en este navegador — usa "Copiar para publicar" para que funcione en otros equipos.`;
-  status.className = 'import-status ok'; status.style.display = 'block';
-  renderUserMgmt();
+  try {
+    const hash = await CTAuth.sha256Hex(password);
+    users.push({ email, hash, role });
+    CTAuth.saveUsers(users);
+    emailInput.value = ''; passInput.value = '';
+    status.textContent = `Usuario ${email} agregado (${role === 'admin' ? 'Administrador' : 'Visualizador'}). Guardado solo en este navegador — usa "Copiar para publicar" para que funcione en otros equipos.`;
+    status.className = 'import-status ok'; status.style.display = 'block';
+    renderUserMgmt();
+  } catch (err) {
+    status.textContent = 'No se pudo agregar el usuario (' + err.message + ').';
+    status.className = 'import-status err'; status.style.display = 'block';
+  }
 }
 function handleExportUsers() {
   const users = CTAuth.loadUsers();
@@ -2445,18 +2506,23 @@ function enterApp(user) {
 }
 async function handleLoginSubmit(e) {
   e.preventDefault();
-  const emailInput = document.getElementById('loginEmail');
-  const passInput = document.getElementById('loginPassword');
   const errorEl = document.getElementById('loginError');
-  const email = emailInput.value.trim().toLowerCase();
-  const password = passInput.value;
-  const hash = await CTAuth.sha256Hex(password);
-  const users = CTAuth.loadUsers();
-  const user = users.find(u => u.email.toLowerCase() === email && u.hash === hash);
-  if (!user) { errorEl.textContent = 'Correo o contraseña incorrectos.'; errorEl.style.display = 'block'; return; }
-  errorEl.style.display = 'none';
-  CTAuth.setSession(user);
-  enterApp(user);
+  try {
+    const emailInput = document.getElementById('loginEmail');
+    const passInput = document.getElementById('loginPassword');
+    const email = emailInput.value.trim().toLowerCase();
+    const password = passInput.value;
+    const hash = await CTAuth.sha256Hex(password);
+    const users = CTAuth.loadUsers();
+    const user = users.find(u => u.email.toLowerCase() === email && u.hash === hash);
+    if (!user) { errorEl.textContent = 'Correo o contraseña incorrectos.'; errorEl.style.display = 'block'; return; }
+    errorEl.style.display = 'none';
+    CTAuth.setSession(user);
+    enterApp(user);
+  } catch (err) {
+    errorEl.textContent = 'No se pudo verificar el acceso (' + err.message + '). Intenta recargar la página.';
+    errorEl.style.display = 'block';
+  }
 }
 function handleLogout() {
   CTAuth.clearSession();
