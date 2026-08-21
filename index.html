@@ -275,6 +275,11 @@ td.live{font-weight:700; background:var(--surface-2);}
 /* ---- footer ---- */
 footer{margin-top:24px; padding-top:16px; border-top:1px solid var(--border); color:var(--text-faint); font-size:11.5px; line-height:1.7;}
 footer b{color:var(--text-dim);}
+.methodology h4{margin:0 0 12px; font-size:13px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em;}
+.glossary{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px 24px; margin:0;}
+.glossary dt{font-size:12px; font-weight:700; color:var(--text-dim); margin:0;}
+.glossary dd{margin:2px 0 0; font-size:11.5px; color:var(--text-faint); line-height:1.5;}
+.methodology-note{margin:16px 0 0; padding-top:12px; border-top:1px solid var(--border); font-size:11px;}
 
 .badge-partial{font-size:9.5px; color:var(--text-faint); font-weight:600;}
 
@@ -501,11 +506,7 @@ footer b{color:var(--text-dim);}
 
   <section class="card">
     <h3>CPM mensual por sarta</h3>
-    <p class="chart-sub">
-      Cada sarta agrupa varias referencias (hoja SARTAS). El CPM de cada referencia usa su propio promedio
-      mensual de metros — calculado en vivo desde CONTADOR DE METROS — sin importar que se repita en otra sarta.
-      ▲ = subió el costo por metro respecto al mes anterior, ▼ = bajó.
-    </p>
+    <p class="chart-sub" id="cpmTrendConclusion"></p>
     <div id="cpmTrendSection"></div>
   </section>
 
@@ -518,16 +519,6 @@ footer b{color:var(--text-dim);}
     </p>
     <div class="kpirow" id="gpKpiRow"></div>
     <div class="table-wrap"><table id="gpTable"></table></div>
-  </section>
-
-  <section class="card">
-    <h3>Códigos por herramienta</h3>
-    <p class="chart-sub" id="herrCodigosSummary">Selecciona una herramienta para ver sus códigos, metros y % de cumplimiento.</p>
-    <div class="filter-group" style="margin-bottom:12px;">
-      <label>Herramienta</label>
-      <select id="herrSelect" style="max-width:420px;"></select>
-    </div>
-    <div class="table-wrap"><table id="herrCodigosTable"></table></div>
   </section>
 
   <section class="card table-card">
@@ -548,41 +539,78 @@ footer b{color:var(--text-dim);}
 
   <footer>
     <p id="footerMeta"></p>
-    <p>
-      <b>Metodología:</b> "Pieza en servicio" = metros perforados &gt; 0. "Ciclo cerrado" = en servicio y estado
-      distinto de ACTIVA. % de rendimiento por pieza = metros perforados / metro garantizado; el cumplimiento medio
-      por herramienta o categoría es el promedio simple de esos porcentajes. El motivo de baja se agrupa desde
-      CAUSA PROBABLE en Fin de vida útil / Condición operativa / Sin causa registrada / Otra. Los meses en los
-      extremos del rango de datos pueden estar incompletos y se marcan como "parcial" en los gráficos. El filtro de
-      Mes / Rango de fechas afecta el registro diario por su fecha de reporte y las piezas por su fecha de baja;
-      las piezas sin fecha de baja registrada se conservan siempre para no perder trazabilidad. CPM real usa el
-      promedio de metros logrados por las piezas usadas de cada referencia; CPM ideal usa el metro garantizado del
-      catálogo, ambos se recalculan sobre los filtros activos. Vida útil = días entre FECHA DE INICIO y FECHA
-      FINAL en piezas de ciclo cerrado que tienen ambas fechas registradas (cobertura parcial del dato, el tamaño
-      de muestra "n" se declara junto a la cifra). La tendencia mensual de cumplimiento agrupa por el mes de la
-      fecha de baja; los meses con pocas piezas cerradas son estadísticamente menos confiables.
-      <br><br>
-      <b>Sobre la fuente actual (MGAR / CONTADOR DE METROS / CODIGOS ALFA NUMERICOS / SARTAS):</b>
-      Todo se reconstruye desde "CONTADOR DE METROS" (no desde "BD" — en este archivo BD es un volcado automático
-      de Contador con un hueco en su columna REFERENCIA, así que se omite). Cada pieza se arma sumando sus propias
-      filas de Contador; su ESTADO es el de su reporte más reciente, tal como aparece en el archivo (ACTIVA,
-      INACTIVA o NO PERTENECE) — no se reclasifica. RESERVA existe como filtro pero hoy no tiene piezas asignadas:
-      se activará cuando el dato exista en el archivo fuente. Metro ideal, metros aceptables (85% del ideal) y
-      precio unitario vienen de MGAR por REFERENCIA. "CONTADOR DE METROS" no trae su propia
-      descripción/referencia por herramienta: se homologa cruzando el código con "CODIGOS ALFA NUMERICOS", que
-      también resuelve el nombre de cada referencia cuando MGAR y esa hoja lo escriben distinto. El total de
-      metros y el promedio mensual cuentan una sola vez los metros de cada reporte, aunque hasta 4 herramientas
-      compartan esa fila (shank/acople/barrena/broca); el desglose "por herramienta" sí acredita esos mismos
-      metros a cada una, por lo que su suma supera el total general — es intencional. El CPM mensual por sarta
-      usa la hoja "SARTAS" solo para saber qué referencias componen cada sarta; el promedio de metros y el CPM de
-      cada referencia se calculan en vivo desde Contador (no desde "DATOS KPIs", que ya no trae fecha ni
-      promedio) y son los mismos aunque la referencia se repita en otra sarta. La conciliación (SI/NO) se guarda
-      solo en este navegador — no hay base de datos compartida todavía, así que no la ve nadie más hasta que se
-      monte una. Esta versión del archivo no trae modo ni causa de descarte, ni fecha de baja/inicio propios por
-      pieza: motivo de baja, modo de falla, vida útil y tendencia mensual de cumplimiento no tendrán datos hasta
-      que esas columnas se diligencien.
-      Paleta de datos y tipografía de títulos según el Manual de Marca CORE TECH 2026.
-    </p>
+    <div class="methodology">
+      <h4>Metodología</h4>
+      <dl class="glossary">
+        <dt>Código de marcado (pieza)</dt>
+        <dd>Un ejemplar físico individual de una herramienta, identificado con su propio código. Una misma
+          herramienta puede tener cientos de códigos en servicio a la vez.</dd>
+
+        <dt>Herramienta / Referencia</dt>
+        <dd>El tipo o modelo de herramienta (ej. un shank o una broca específicos). Agrupa a todos los códigos
+          de ese modelo.</dd>
+
+        <dt>Metro ideal (garantizado)</dt>
+        <dd>Los metros que el fabricante garantiza que una herramienta de esa referencia debe perforar en su
+          vida útil.</dd>
+
+        <dt>Metros aceptables</dt>
+        <dd>El 85% del metro ideal — el umbral mínimo por debajo del cual se considera que una pieza tuvo un
+          desempeño deficiente.</dd>
+
+        <dt>% Cumplimiento</dt>
+        <dd>Metros realmente perforados ÷ metro ideal. Por debajo de 85% es deficiente, entre 85% y 100% es
+          aceptable, por encima de 100% supera la garantía.</dd>
+
+        <dt>Estado</dt>
+        <dd>Situación actual de una pieza según su reporte más reciente: <b>Activa</b> (en uso), <b>Inactiva</b>
+          (fuera de servicio), <b>Reserva</b> (disponible sin usar) o <b>No pertenece</b> (reporte sin
+          herramienta asociada).</dd>
+
+        <dt>CPM real</dt>
+        <dd>Costo por metro efectivo: precio unitario de la herramienta ÷ promedio de metros que realmente
+          logran sus piezas.</dd>
+
+        <dt>CPM ideal</dt>
+        <dd>Costo por metro teórico si la herramienta cumpliera exactamente su garantía: precio unitario ÷
+          metro ideal. Sirve de referencia para comparar contra el CPM real.</dd>
+
+        <dt>CPM mensual por sarta</dt>
+        <dd>Una sarta es el conjunto de herramientas que perforan juntas (ej. shank + acople + barra + broca).
+          El CPM de cada herramienta se recalcula cada mes con su propio promedio de metros de ese mes — el
+          mismo valor aplica aunque esa herramienta participe en varias sartas — para poder comparar cómo sube o
+          baja el costo mes a mes.</dd>
+
+        <dt>Ganancia / pérdida por herramienta</dt>
+        <dd>Valor económico del desempeño: en piezas por debajo de 85% se calcula cuánto dinero se pierde por
+          los metros que faltaron; en piezas por encima de 100% se calcula cuánto se gana por los metros de
+          más — ambos al costo por metro ideal.</dd>
+
+        <dt>Oportunidad recuperable</dt>
+        <dd>Metros y dinero perdidos específicamente en piezas dadas de baja antes de cumplir su garantía (no
+          incluye las que llegaron a fin de vida útil cumpliendo).</dd>
+
+        <dt>Vida útil</dt>
+        <dd>Días en servicio de una pieza, desde su entrega hasta su baja. Solo se calcula para piezas que
+          tienen ambas fechas registradas.</dd>
+
+        <dt>Motivo de baja</dt>
+        <dd>Por qué se retiró una pieza: fin de vida útil (cumplió su ciclo), condición operativa (falla antes
+          de tiempo), sin causa registrada, u otra.</dd>
+
+        <dt>Conciliación</dt>
+        <dd>Marca manual de si una pieza ya fue verificada/cruzada contra inventario físico (Sí/No).</dd>
+
+        <dt>Meses parciales</dt>
+        <dd>El primer y el último mes del rango de datos disponible pueden no estar completos; se marcan como
+          "parcial" en los gráficos para no confundirlos con una caída real de producción.</dd>
+      </dl>
+      <p class="methodology-note">
+        Las cifras se recalculan sobre los filtros activos en cada momento. La conciliación y los usuarios que
+        agregues se guardan solo en este navegador hasta que exista una base de datos compartida.
+        Paleta de datos y tipografía de títulos según el Manual de Marca CORE TECH 2026.
+      </p>
+    </div>
   </footer>
 
 </div>
@@ -1804,13 +1832,22 @@ function svgHBarChart(items, opts) {
   });
   let refLines = '';
   if (opts.refLines) {
-    opts.refLines.forEach(rl => {
+    // Anchor each label so its text never spills past the SVG edges — a
+    // centered label near the right/left border was getting clipped and
+    // overlapping its neighbor (the "no se ve la leyenda" overflow bug).
+    opts.refLines.forEach((rl, i) => {
       const x = padL + plotW * (Math.min(rl.value, maxV) / maxV);
+      const nearRight = x > W - 34;
+      const nearLeft = x < 34;
+      const anchor = nearRight ? 'end' : nearLeft ? 'start' : 'middle';
+      const labelX = nearRight ? Math.min(x, W - 2) : nearLeft ? Math.max(x, 2) : x;
+      const ty = padT - 4 - (i % 2) * 11; // stagger alternating labels so close ref lines don't overlap
       refLines += `<line x1="${x.toFixed(1)}" y1="${padT - 2}" x2="${x.toFixed(1)}" y2="${H - padT + 2}" class="ref-line"/>`;
-      refLines += `<text x="${x.toFixed(1)}" y="${padT - 4}" text-anchor="middle" class="badge-partial">${esc(rl.label)}</text>`;
+      refLines += `<text x="${labelX.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="${anchor}" class="badge-partial">${esc(rl.label)}</text>`;
     });
   }
-  return `<div style="overflow-x:auto;"><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="min-width:${Math.min(W,320)}px" role="img">${rows}${refLines}</svg></div>`;
+  const topPad = opts.refLines && opts.refLines.length > 1 ? 12 : 0;
+  return `<div style="overflow-x:auto;"><svg viewBox="0 ${-topPad} ${W} ${H + topPad}" width="100%" height="${H + topPad}" style="min-width:${Math.min(W,320)}px" role="img">${rows}${refLines}</svg></div>`;
 }
 
 function rendPillClass(pct) {
@@ -2100,8 +2137,6 @@ function populateFilterOptions() {
     toInput.min = dayToDateStr(minD, epoch); toInput.max = dayToDateStr(maxD, epoch);
   }
   fromInput.value = ''; toInput.value = '';
-
-  populateHerramientaSelect();
 }
 
 const herrForRefCache = new Map();
@@ -2209,7 +2244,7 @@ function renderRendimientoChart(rows) {
     valueLabel: r.cumplimientoMedio.toFixed(0) + '%',
     tooltip: `${r.cumplimientoMedio.toFixed(1)}% cumplimiento medio · n=${r.n} piezas`,
   }));
-  document.getElementById('chartRendimiento').innerHTML = svgHBarChart(items, { width: containerWidth('chartRendimiento'), rowH: 24, maxV: 150, refLines: [{ value: 85, label: '85% (rango aceptable)' }, { value: 100, label: '100%' }] });
+  document.getElementById('chartRendimiento').innerHTML = svgHBarChart(items, { width: containerWidth('chartRendimiento'), rowH: 24, maxV: 150, refLines: [{ value: 85, label: '85% aceptable' }, { value: 100, label: '100% ideal' }] });
 }
 function renderCumplimientoTrend(bundle, life) {
   const rows = cumplimientoPorMes(bundle, life);
@@ -2288,6 +2323,35 @@ function renderCPM(bundle, life) {
 // CPM mensual agrupado por Sarta: cada sarta agrupa varias referencias
 // (hoja SARTAS); el CPM de cada referencia se calcula con su propio
 // promedio mensual de metros, aunque esa referencia se repita en otra sarta.
+// Conclusión calculada a partir de los dos últimos meses con datos, en vez de
+// un texto fijo de metodología.
+function describeCpmTrend(sartaRows, months) {
+  if (months.length < 2) return 'Se necesitan al menos dos meses con datos para comparar la tendencia de CPM.';
+  const mLast = months[months.length - 1], mPrev = months[months.length - 2];
+  const moves = []; // {sarta, herramienta, pct}
+  const seen = new Set(); // evita contar dos veces una referencia repetida en varias sartas
+  for (const s of sartaRows) {
+    for (const r of s.referencias) {
+      const byYm = new Map(r.months.map(m => [m.ym, m]));
+      const cur = byYm.get(mLast), prev = byYm.get(mPrev);
+      if (!cur || !prev || cur.cpm === null || prev.cpm === null) continue;
+      const key = r.ref;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      moves.push({ herramienta: r.herramienta, pct: (cur.cpm - prev.cpm) / prev.cpm * 100 });
+    }
+  }
+  if (!moves.length) return `Sin referencias con CPM en ${ymLabel(mPrev)} y ${ymLabel(mLast)} a la vez para comparar.`;
+  const subieron = moves.filter(m => m.pct > 1);
+  const bajaron = moves.filter(m => m.pct < -1);
+  const peorMovida = moves.reduce((a, b) => b.pct > a.pct ? b : a);
+  const mejorMovida = moves.reduce((a, b) => b.pct < a.pct ? b : a);
+  let txt = `De ${moves.length} referencias comparables entre ${ymLabel(mPrev)} y ${ymLabel(mLast)}, ${subieron.length} subieron de costo y ${bajaron.length} bajaron.`;
+  if (peorMovida.pct > 1) txt += ` La mayor alza fue en ${peorMovida.herramienta} (+${peorMovida.pct.toFixed(0)}%).`;
+  if (mejorMovida.pct < -1) txt += ` La mayor baja fue en ${mejorMovida.herramienta} (${mejorMovida.pct.toFixed(0)}%).`;
+  return txt;
+}
+
 function renderCPMTrend(bundle, prod) {
   const section = document.getElementById('cpmTrendSection');
   const sartaRows = cpmPorSarta(bundle, prod);
@@ -2298,6 +2362,7 @@ function renderCPMTrend(bundle, prod) {
   const monthSet = new Set();
   sartaRows.forEach(s => s.referencias.forEach(r => r.months.forEach(m => monthSet.add(m.ym))));
   const months = Array.from(monthSet).sort();
+  document.getElementById('cpmTrendConclusion').textContent = describeCpmTrend(sartaRows, months);
 
   const blocks = sartaRows.map(s => {
     const withData = s.referencias.filter(r => r.months.some(m => m.cpm !== null));
@@ -2355,39 +2420,6 @@ function renderGananciaPerdida(bundle, life) {
   table.innerHTML = `<thead>${thead}</thead><tbody>${tbody || `<tr><td colspan="9" class="empty-note">Sin datos.</td></tr>`}</tbody>`;
 }
 
-// ============ herramienta -> códigos asociados ============
-function populateHerramientaSelect() {
-  const sel = document.getElementById('herrSelect');
-  const d = BUNDLE.dict;
-  const opts = d.ref.map((code, i) => {
-    const herrIdx = findHerrForRef(i);
-    return { code, label: herrIdx !== null ? d.herr[herrIdx] : code };
-  }).sort((a, b) => a.label.localeCompare(b.label));
-  sel.innerHTML = opts.map(o => `<option value="${esc(o.code)}">${esc(o.label)}</option>`).join('');
-}
-function renderHerramientaCodigos(bundle, life) {
-  const sel = document.getElementById('herrSelect');
-  const chosenRef = sel.value;
-  const rows = rendimientoPorPieza(bundle, life).filter(r => r.ref === chosenRef);
-  rows.sort((a, b) => (b.cumplimiento ?? -1) - (a.cumplimiento ?? -1));
-  const table = document.getElementById('herrCodigosTable');
-  const conc = loadConciliacion();
-  const thead = `<tr><th>Código</th><th class="num">Metros perforados</th><th class="num">Metro ideal</th><th class="num">% cumplimiento</th><th>Conciliado</th></tr>`;
-  const tbody = rows.map(r => `<tr>
-    <td>${esc(r.codigo)}</td>
-    <td class="num">${fmtNum(r.metros)}</td>
-    <td class="num">${r.garantizado === null ? '—' : fmtNum(r.garantizado)}</td>
-    <td class="num">${r.cumplimiento === null ? '—' : `<span class="pill ${rendPillClass(r.cumplimiento)}">${r.cumplimiento.toFixed(1)}%</span>`}</td>
-    <td><button type="button" class="small conc-toggle ${conc[r.codigo] === 'SI' ? 'conc-si' : 'conc-no'}" data-codigo="${esc(r.codigo)}">${conc[r.codigo] === 'SI' ? '✓ Sí' : '— No'}</button></td>
-  </tr>`).join('');
-  table.innerHTML = `<thead>${thead}</thead><tbody>${tbody || `<tr><td colspan="5" class="empty-note">Sin códigos para esta herramienta con los filtros actuales.</td></tr>`}</tbody>`;
-  table.querySelectorAll('.conc-toggle').forEach(btn => btn.addEventListener('click', () => {
-    toggleConciliacion(btn.dataset.codigo);
-    renderHerramientaCodigos(BUNDLE, currentLife);
-  }));
-  document.getElementById('herrCodigosSummary').textContent = `${rows.length} códigos · ${rows.filter(r => r.cumplimiento !== null && r.cumplimiento < 85).length} por debajo de 85% · ${rows.filter(r => r.cumplimiento !== null && r.cumplimiento > 100).length} por encima de 100%`;
-}
-
 // ============ motivo de baja ============
 const MOTIVO_META = {
   FIN_VIDA_UTIL: { title: 'Fin de vida útil', cls: 'fin' },
@@ -2426,6 +2458,7 @@ function buildHerramientaRows(prod, life) {
 }
 function buildPiezaRows(life) {
   const d = BUNDLE.dict;
+  const conc = loadConciliacion();
   return life.map(l => {
     const [cm, refIdx, herrIdx, mp, mg, estadoIdx, bucket, causaIdx, , minaIdx, equipoIdx, fechaFinal] = l;
     return {
@@ -2434,6 +2467,7 @@ function buildPiezaRows(life) {
       metros: mp, garantizado: mg, aceptable: mg ? mg * 0.85 : null, cumplimiento: mg ? (mp / mg * 100) : null,
       estado: d.estado[estadoIdx] || '', motivo: d.causa[causaIdx] || (bucket === 'SIN_CAUSA' ? '—' : bucket),
       fechaBaja: fechaFinal !== null ? dayToDateStr(fechaFinal, BUNDLE.meta.epoch) : '',
+      conciliado: conc[cm] === 'SI' ? 'SI' : 'NO',
     };
   });
 }
@@ -2473,6 +2507,10 @@ const COLS_PIEZA = [
   { key: 'estado', label: 'Estado' },
   { key: 'motivo', label: 'Motivo de baja' },
   { key: 'fechaBaja', label: 'Fecha de baja' },
+  {
+    key: 'conciliado', label: 'Conciliado',
+    render: (raw, row) => `<td><button type="button" class="small conc-toggle ${raw === 'SI' ? 'conc-si' : 'conc-no'}" data-codigo="${esc(row.codigo)}">${raw === 'SI' ? '✓ Sí' : '— No'}</button></td>`,
+  },
 ];
 const COLS_CPM = [
   { key: 'referencia', label: 'Referencia' },
@@ -2517,6 +2555,7 @@ function renderTable(prod, life) {
   const thead = `<tr>${cols.map(c => `<th data-key="${c.key}" class="${tableState.sortKey === c.key ? 'sorted' : ''}">${esc(c.label)}</th>`).join('')}</tr>`;
   const tbody = pageRows.map(r => `<tr>${cols.map(c => {
     const raw = r[c.key];
+    if (c.render) return c.render(raw, r);
     const val = c.fmt ? c.fmt(raw) : (raw === null || raw === undefined || raw === '' ? '—' : esc(raw));
     if (c.pill && raw !== null && raw !== undefined) {
       return `<td class="num"><span class="pill ${rendPillClass(raw)}">${val}</span></td>`;
@@ -2543,6 +2582,10 @@ function renderTable(prod, life) {
   const prevBtn = document.getElementById('pgPrev'), nextBtn = document.getElementById('pgNext');
   if (prevBtn) prevBtn.addEventListener('click', () => { tableState.page--; renderTable(currentProd, currentLife); });
   if (nextBtn) nextBtn.addEventListener('click', () => { tableState.page++; renderTable(currentProd, currentLife); });
+  document.querySelectorAll('#tableBody .conc-toggle').forEach(btn => btn.addEventListener('click', () => {
+    toggleConciliacion(btn.dataset.codigo);
+    renderTable(currentProd, currentLife);
+  }));
 }
 
 // ============ footer / subtitle ============
@@ -2570,7 +2613,6 @@ function renderAll() {
   renderCPM(BUNDLE, life);
   renderCPMTrend(BUNDLE, prod);
   renderGananciaPerdida(BUNDLE, life);
-  renderHerramientaCodigos(BUNDLE, life);
   tableState.page = 1;
   renderTable(prod, life);
   renderMeta(kpis);
@@ -2781,7 +2823,6 @@ function initApp() {
   initTheme();
   document.getElementById('themeToggle').addEventListener('click', cycleTheme);
   document.getElementById('clearFilters').addEventListener('click', clearFilters);
-  document.getElementById('herrSelect').addEventListener('change', () => renderHerramientaCodigos(BUNDLE, currentLife));
   document.querySelectorAll('.datepreset').forEach(b => b.addEventListener('click', () => applyDatePreset(b.dataset.preset)));
   document.getElementById('dateFrom').addEventListener('change', (e) => { filters.dateFrom = e.target.value || null; filters.months = []; syncMonthBtnLabel(); renderAll(); });
   document.getElementById('dateTo').addEventListener('change', (e) => { filters.dateTo = e.target.value || null; filters.months = []; syncMonthBtnLabel(); renderAll(); });
