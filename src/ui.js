@@ -415,10 +415,19 @@ function describeCpmTrend(sartaRows, months) {
 
 function renderCPMTrend(bundle, prod) {
   const section = document.getElementById('cpmTrendSection');
-  const sartaRows = cpmPorSarta(bundle, prod);
+  let sartaRows = cpmPorSarta(bundle, prod);
   if (!sartaRows.length) {
     section.innerHTML = '<div class="empty-note">Este archivo no trae la hoja SARTAS.</div>';
     return;
+  }
+  // Si hay una o más sartas activas en el filtro superior, solo se muestran
+  // esas — el resto queda oculto en vez de saturar la sección con todas.
+  if (filters.sarta.length) {
+    sartaRows = sartaRows.filter(s => filters.sarta.includes(s.sarta));
+    if (!sartaRows.length) {
+      section.innerHTML = '<div class="empty-note">Sin datos para la sarta seleccionada.</div>';
+      return;
+    }
   }
   const monthSet = new Set();
   sartaRows.forEach(s => s.referencias.forEach(r => r.months.forEach(m => monthSet.add(m.ym))));
