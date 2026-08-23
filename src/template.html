@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CORE TECH · Desempeño de Aceros de Perforación — Aris Mining Segovia</title>
+<style>
+__CSS__
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-card" id="loginPanel">
+    <img class="logo login-logo logo-light" src="data:image/png;base64,__LOGO_NAVY__" alt="CORE TECH">
+    <img class="logo login-logo logo-dark" src="data:image/png;base64,__LOGO_WHITE__" alt="CORE TECH">
+    <p class="login-subtitle">Desempeño de Aceros de Perforación — Aris Mining Segovia</p>
+    <form id="loginForm">
+      <label for="loginEmail">Correo</label>
+      <input type="email" id="loginEmail" autocomplete="username" required placeholder="nombre@correo.com">
+      <label for="loginPassword">Contraseña</label>
+      <input type="password" id="loginPassword" autocomplete="current-password" required placeholder="••••••••">
+      <div class="login-error" id="loginError" style="display:none;"></div>
+      <button type="submit" class="primary login-submit">Ingresar</button>
+    </form>
+    <p class="login-note">Acceso por invitación — si no tienes cuenta, pide a un administrador de CORE TECH que te invite.</p>
+  </div>
+  <div class="login-card" id="setPasswordPanel" hidden>
+    <img class="logo login-logo logo-light" src="data:image/png;base64,__LOGO_NAVY__" alt="CORE TECH">
+    <img class="logo login-logo logo-dark" src="data:image/png;base64,__LOGO_WHITE__" alt="CORE TECH">
+    <p class="login-subtitle">Fuiste invitado a CORE TECH — crea tu contraseña para continuar</p>
+    <form id="setPasswordForm">
+      <label for="newPassword1">Nueva contraseña</label>
+      <input type="password" id="newPassword1" autocomplete="new-password" required minlength="6" placeholder="Mínimo 6 caracteres">
+      <div class="login-error" id="setPasswordError" style="display:none;"></div>
+      <button type="submit" class="primary login-submit">Continuar</button>
+    </form>
+  </div>
+</div>
+
+<div id="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <img class="logo logo-light" src="data:image/png;base64,__LOGO_NAVY__" alt="CORE TECH" id="logoImgLight">
+      <img class="logo logo-dark" src="data:image/png;base64,__LOGO_WHITE__" alt="CORE TECH" id="logoImgDark">
+      <div>
+        <h1>Desempeño de Aceros de Perforación</h1>
+        <p class="subtitle" id="subtitle">Aris Mining Segovia — Sandra K · El Silencio · Providencia</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span class="user-badge" id="userBadge" hidden></span>
+      <button id="usersBtn" class="ghost" hidden>👤 Usuarios</button>
+      <button id="importBtn">⇪ Importar Excel</button>
+      <button id="themeToggle" class="ghost">🌓 Auto</button>
+      <button id="logoutBtn" class="ghost">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <section class="card" id="usersCard" hidden>
+    <h3>Gestión de usuarios</h3>
+    <p class="chart-sub">
+      El acceso es solo por invitación: un administrador invita a cada persona desde el panel de Supabase
+      (Authentication → Users → Invite user); al aceptar la invitación, la persona crea su propia contraseña
+      — CORE TECH nunca la ve ni la guarda. Aquí, como Administrador, puedes asignar el rol Administrador o
+      Visualizador a cada cuenta, y revocar el acceso de alguien.
+    </p>
+    <div id="userList" class="user-list"></div>
+    <div class="import-status" id="userAddStatus" style="display:none;"></div>
+  </section>
+
+  <section class="card import-card" id="importCard" hidden>
+    <h3>Importar nueva base de datos</h3>
+    <p>
+      Carga un Excel nuevo para actualizar todas las cifras y gráficos de este panel. Acepta el libro actual
+      (<b>MGAR</b> / <b>CONTADOR DE METROS</b> / <b>CODIGOS ALFA NUMERICOS</b>, con <b>SARTAS</b> opcional para el
+      CPM por sarta), la hoja consolidada ancha (<b>BASE DE DATOS</b>, con SHANK/ACOPLE/BARRENA/BROCA) o los formatos anteriores
+      (<b>AMS_Diario</b> / <b>BD_Aceros</b> / <b>Referencia</b>, o el maestro original <b>NUEVO AMS BD
+      RENDIMIENTOS</b> / <b>BD CONSECUTIVOS ACEROS</b> / <b>RENDIMIENTOS</b>). El precio unitario y el metro
+      garantizado se toman del catálogo ya cargado cuando el archivo nuevo no trae su propia hoja de referencia.
+      El procesamiento ocurre en tu navegador — el archivo no se envía a ningún servidor.
+    </p>
+    <div class="dropzone" id="dropzone">
+      Arrastra aquí el archivo .xlsx, o
+      <button class="small primary" id="browseBtn" type="button">elegir archivo…</button>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
+    </div>
+    <button class="small" id="restoreBtn" type="button">↺ Restaurar datos originales</button>
+    <div class="import-status" id="importStatus" style="display:none;"></div>
+  </section>
+
+  <section class="filterbar">
+    <div class="filter-group">
+      <label>Mina</label>
+      <div class="chipset" id="minaChips"></div>
+    </div>
+    <div class="filter-group">
+      <label>Tipo de perforación</label>
+      <div class="chipset" id="tipoChips"></div>
+    </div>
+    <div class="filter-group">
+      <label>Estado</label>
+      <div class="chipset" id="estadoChips"></div>
+    </div>
+    <div class="filter-group">
+      <label>Equipo / Jumbo</label>
+      <div class="dropdown">
+        <button class="dropdown-btn" id="equipoBtn" type="button"><span class="dd-label">Equipo / Jumbo</span> ▾</button>
+        <div class="dropdown-panel" id="equipoPanel" style="display:none;">
+          <input type="search" id="equipoSearch" placeholder="Buscar equipo…">
+          <div id="equipoList"></div>
+        </div>
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>Herramienta / Referencia</label>
+      <div class="dropdown">
+        <button class="dropdown-btn" id="refBtn" type="button"><span class="dd-label">Herramienta / Referencia</span> ▾</button>
+        <div class="dropdown-panel" id="refPanel" style="display:none;">
+          <input type="search" id="refSearch" placeholder="Buscar herramienta o código…">
+          <div id="refList"></div>
+        </div>
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>Mes</label>
+      <div class="dropdown">
+        <button class="dropdown-btn" id="monthBtn" type="button"><span class="dd-label">Mes</span> ▾</button>
+        <div class="dropdown-panel" id="monthPanel" style="display:none;">
+          <input type="search" id="monthSearch" placeholder="Buscar mes…">
+          <div id="monthList"></div>
+        </div>
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>Rango de fechas</label>
+      <div class="dateinputs">
+        <input type="date" id="dateFrom"> <span>–</span> <input type="date" id="dateTo">
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>Accesos rápidos</label>
+      <div class="chipset">
+        <button class="chip datepreset" data-preset="all" type="button">Todo</button>
+        <button class="chip datepreset" data-preset="month" type="button">Mes actual</button>
+        <button class="chip datepreset" data-preset="q" type="button">Últimos 3 meses</button>
+        <button class="chip datepreset" data-preset="year" type="button">Año actual</button>
+      </div>
+    </div>
+    <div class="filter-actions">
+      <button id="clearFilters" type="button">Limpiar filtros</button>
+    </div>
+  </section>
+
+  <section class="kpirow" id="kpiRow"></section>
+
+  <section class="chartsgrid">
+    <div class="card chart-card">
+      <h3>Metros perforados por mes</h3>
+      <p class="chart-sub">Suma de MP TOTAL del registro diario, según los filtros activos.</p>
+      <div id="chartMonthly"></div>
+    </div>
+    <div class="card chart-card">
+      <h3>Metros perforados por herramienta</h3>
+      <p class="chart-sub">Top 10 referencias por metros acumulados en el periodo filtrado.</p>
+      <div id="chartTools"></div>
+    </div>
+    <div class="card chart-card">
+      <h3>Códigos activos por mes</h3>
+      <p class="chart-sub">Códigos de herramienta distintos con al menos 1 metro perforado ese mes.</p>
+      <div id="chartActiveTools"></div>
+    </div>
+    <div class="card chart-card">
+      <h3>Rendimiento por herramienta</h3>
+      <p class="chart-sub">% cumplimiento medio = metros perforados / metro ideal (garantizado, hoja MGAR). Línea punteada en 85% = metros aceptables y en 100% = metro ideal. Detalle por código de marcado (pieza individual) en la pestaña "Detalle de piezas" de la tabla de abajo.</p>
+      <div id="chartRendimiento"></div>
+    </div>
+    <div class="card chart-card">
+      <h3>Tendencia de cumplimiento mes a mes</h3>
+      <p class="chart-sub">% cumplimiento medio por mes de fecha de baja. Los meses con pocas piezas cerradas son menos confiables — revisa el n en el tooltip de cada barra.</p>
+      <div id="chartTrend"></div>
+    </div>
+  </section>
+
+  <section class="card motivo-card">
+    <h3>Motivo de baja — piezas con ciclo cerrado</h3>
+    <div id="motivoGrid"></div>
+    <p class="note">
+      Cuando una pieza llega a <b>fin de vida útil</b> normalmente cumple y supera su garantía; las pérdidas de
+      metros se concentran en bajas por <b>condición operativa</b> (percusión en vacío, rotación violenta, baja
+      presión de agua de barrido, etc.) y en piezas <b>sin causa registrada</b> — cerrar ese registro es la mejora
+      de trazabilidad pendiente más importante. La tarjeta "Oportunidad recuperable" arriba cuantifica los metros
+      perdidos en piezas que no llegaron a fin de vida útil.
+    </p>
+  </section>
+
+  <section class="chartsgrid">
+    <div class="card chart-card">
+      <h3>Causa de baja</h3>
+      <p class="chart-sub">Top 10 causas registradas en piezas de ciclo cerrado, coloreadas por su cumplimiento medio.</p>
+      <div id="chartCausa"></div>
+    </div>
+    <div class="card chart-card">
+      <h3>Modo de falla</h3>
+      <p class="chart-sub">Top 10 valores de TIPO DE FALLA registrados en piezas de ciclo cerrado.</p>
+      <div id="chartFalla"></div>
+    </div>
+  </section>
+
+  <section class="card table-card">
+    <h3>Detalle de causas de baja</h3>
+    <p class="chart-sub">Metros y USD perdidos = brecha entre metro garantizado y metros realmente perforados en piezas que no alcanzaron su garantía.</p>
+    <div class="table-wrap">
+      <table id="causaTable"></table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>CPM — Costo por metro</h3>
+    <p class="chart-sub">
+      CPM real = precio unitario de la herramienta / metros que realmente logra en promedio. CPM ideal = precio
+      unitario / metro garantizado. Convención heredada de la hoja CPM de Marmato.
+    </p>
+    <div class="kpirow" id="cpmKpiRow"></div>
+    <h4 style="margin:18px 0 4px; font-size:13px;">CPM real por herramienta (top 12 por metros perforados)</h4>
+    <div id="chartCPM"></div>
+  </section>
+
+  <section class="card">
+    <h3>CPM mensual por sarta</h3>
+    <p class="chart-sub" id="cpmTrendConclusion"></p>
+    <div id="cpmTrendSection"></div>
+  </section>
+
+  <section class="card">
+    <h3>Ganancia / pérdida por herramienta</h3>
+    <p class="chart-sub">
+      Por cada pieza por debajo del 85% del metro ideal se calcula lo que el cliente pierde (metros que faltaron
+      × costo por metro ideal); por encima del 100% se calcula lo que gana (metros de más al mismo costo). Entre
+      85% y 100% es zona aceptable y no se cuantifica.
+    </p>
+    <div class="kpirow" id="gpKpiRow"></div>
+    <div class="table-wrap"><table id="gpTable"></table></div>
+  </section>
+
+  <section class="card table-card">
+    <div class="table-tabs">
+      <button data-tab="herramienta" class="active" type="button">Por herramienta</button>
+      <button data-tab="pieza" type="button">Detalle por código de marcado</button>
+      <button data-tab="cpm" type="button">CPM</button>
+    </div>
+    <input id="tableSearch" type="search" placeholder="Buscar por código, referencia, herramienta…">
+    <div class="table-wrap">
+      <table>
+        <thead id="tableHead"></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="pagination"></div>
+  </section>
+
+  <footer>
+    <p id="footerMeta"></p>
+    <div class="methodology">
+      <h4>Metodología</h4>
+      <dl class="glossary">
+        <dt>Código de marcado (pieza)</dt>
+        <dd>Un ejemplar físico individual de una herramienta, identificado con su propio código. Una misma
+          herramienta puede tener cientos de códigos en servicio a la vez.</dd>
+
+        <dt>Herramienta / Referencia</dt>
+        <dd>El tipo o modelo de herramienta (ej. un shank o una broca específicos). Agrupa a todos los códigos
+          de ese modelo.</dd>
+
+        <dt>Metro ideal (garantizado)</dt>
+        <dd>Los metros que el fabricante garantiza que una herramienta de esa referencia debe perforar en su
+          vida útil.</dd>
+
+        <dt>Metros aceptables</dt>
+        <dd>El 85% del metro ideal — el umbral mínimo por debajo del cual se considera que una pieza tuvo un
+          desempeño deficiente.</dd>
+
+        <dt>% Cumplimiento</dt>
+        <dd>Metros realmente perforados ÷ metro ideal. Por debajo de 85% es deficiente, entre 85% y 100% es
+          aceptable, por encima de 100% supera la garantía.</dd>
+
+        <dt>Estado</dt>
+        <dd>Situación actual de una pieza según su reporte más reciente: <b>Activa</b> (en uso), <b>Inactiva</b>
+          (fuera de servicio), <b>Reserva</b> (disponible sin usar) o <b>No pertenece</b> (reporte sin
+          herramienta asociada).</dd>
+
+        <dt>CPM real</dt>
+        <dd>Costo por metro efectivo: precio unitario de la herramienta ÷ promedio de metros que realmente
+          logran sus piezas.</dd>
+
+        <dt>CPM ideal</dt>
+        <dd>Costo por metro teórico si la herramienta cumpliera exactamente su garantía: precio unitario ÷
+          metro ideal. Sirve de referencia para comparar contra el CPM real.</dd>
+
+        <dt>CPM mensual por sarta</dt>
+        <dd>Una sarta es el conjunto de herramientas que perforan juntas (ej. shank + acople + barra + broca).
+          El CPM de cada herramienta se recalcula cada mes con su propio promedio de metros de ese mes — el
+          mismo valor aplica aunque esa herramienta participe en varias sartas — para poder comparar cómo sube o
+          baja el costo mes a mes.</dd>
+
+        <dt>Ganancia / pérdida por herramienta</dt>
+        <dd>Valor económico del desempeño: en piezas por debajo de 85% se calcula cuánto dinero se pierde por
+          los metros que faltaron; en piezas por encima de 100% se calcula cuánto se gana por los metros de
+          más — ambos al costo por metro ideal.</dd>
+
+        <dt>Oportunidad recuperable</dt>
+        <dd>Metros y dinero perdidos específicamente en piezas dadas de baja antes de cumplir su garantía (no
+          incluye las que llegaron a fin de vida útil cumpliendo).</dd>
+
+        <dt>Vida útil</dt>
+        <dd>Días en servicio de una pieza, desde su entrega hasta su baja. Solo se calcula para piezas que
+          tienen ambas fechas registradas.</dd>
+
+        <dt>Motivo de baja</dt>
+        <dd>Por qué se retiró una pieza: fin de vida útil (cumplió su ciclo), condición operativa (falla antes
+          de tiempo), sin causa registrada, u otra.</dd>
+
+        <dt>Conciliación</dt>
+        <dd>Marca manual de si una pieza ya fue verificada/cruzada contra inventario físico (Sí/No).</dd>
+
+        <dt>Meses parciales</dt>
+        <dd>El primer y el último mes del rango de datos disponible pueden no estar completos; se marcan como
+          "parcial" en los gráficos para no confundirlos con una caída real de producción.</dd>
+      </dl>
+      <p class="methodology-note">
+        Las cifras se recalculan sobre los filtros activos en cada momento. La conciliación y los usuarios que
+        agregues se guardan solo en este navegador hasta que exista una base de datos compartida.
+        Paleta de datos y tipografía de títulos según el Manual de Marca CORE TECH 2026.
+      </p>
+    </div>
+  </footer>
+
+</div>
+
+<script>window.__DATA_BUNDLE__ = __DATA_BUNDLE_JSON__;</script>
+<script>__XLSX_LIB__</script>
+<script>__AGG_JS__</script>
+<script>__IMPORTER_JS__</script>
+<script>__CHARTS_JS__</script>
+<script>__SUPABASE_JS__</script>
+<script>__AUTH_JS__</script>
+<script>__UI_JS__</script>
+</body>
+</html>
