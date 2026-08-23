@@ -5,7 +5,7 @@ const MONTH_ABBR = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT',
 
 let DEFAULT_BUNDLE = window.__DATA_BUNDLE__;
 let BUNDLE = DEFAULT_BUNDLE;
-const EMPTY_FILTERS = () => ({ mina: [], tipo: [], equipo: [], ref: [], estado: [], months: [], dateFrom: null, dateTo: null });
+const EMPTY_FILTERS = () => ({ mina: [], tipo: [], equipo: [], ref: [], estado: [], sarta: [], months: [], dateFrom: null, dateTo: null });
 let filters = EMPTY_FILTERS();
 let tableState = { tab: 'herramienta', sortKey: 'metros', sortDir: 'desc', search: '', page: 1 };
 const PAGE_SIZE = 20;
@@ -105,6 +105,11 @@ function searchDropdown(btnId, panelId, searchId, listId, options, filterKey, la
     const n = filters[panel._ddFilterKey].length;
     btn.querySelector('.dd-label').textContent = n ? `${panel._ddLabelPrefix} (${n})` : panel._ddLabelPrefix;
   }
+  // Lets other filter controls (e.g. los chips de Sarta) refrescar este
+  // dropdown después de cambiar filters[filterKey] por su cuenta, sin tener
+  // que volver a llamar a populateFilterOptions() entero (eso reconstruiría
+  // todos los filtros y borraría cosas como el rango de fechas ya elegido).
+  panel._ddRefresh = () => { renderList(search.value || ''); updateBtnLabel(); };
 
   if (!btn.dataset.wired) {
     btn.dataset.wired = '1';
@@ -122,10 +127,43 @@ function searchDropdown(btnId, panelId, searchId, listId, options, filterKey, la
   updateBtnLabel();
 }
 
+// Al activar una sarta, sus herramientas/referencias asociadas reemplazan la
+// selección del filtro de Herramienta/Referencia (unión si hay varias sartas
+// activas a la vez); al desactivar todas, ese filtro vuelve a quedar libre.
+function applySartaSelectionToRef() {
+  const refSet = new Set();
+  filters.sarta.forEach(nombre => {
+    (BUNDLE.sartas[nombre] || []).forEach(code => refSet.add(code));
+  });
+  filters.ref = Array.from(refSet);
+  const refPanel = document.getElementById('refPanel');
+  if (refPanel && refPanel._ddRefresh) refPanel._ddRefresh();
+}
+function sartaChipSet() {
+  const group = document.getElementById('sartaFilterGroup');
+  const container = document.getElementById('sartaChips');
+  const sartaNames = Object.keys(BUNDLE.sartas || {}).sort();
+  group.hidden = !sartaNames.length;
+  container.innerHTML = '';
+  sartaNames.forEach(nombre => {
+    const b = el(`<button type="button" class="chip">${esc(nombre)}</button>`);
+    if (filters.sarta.includes(nombre)) b.classList.add('active');
+    b.addEventListener('click', () => {
+      const idx = filters.sarta.indexOf(nombre);
+      if (idx >= 0) filters.sarta.splice(idx, 1); else filters.sarta.push(nombre);
+      b.classList.toggle('active');
+      applySartaSelectionToRef();
+      renderAll();
+    });
+    container.appendChild(b);
+  });
+}
+
 function populateFilterOptions() {
   const d = BUNDLE.dict;
   chipSet('minaChips', d.mina.slice().sort(), 'mina');
   chipSet('tipoChips', d.tipo.slice().sort(), 'tipo');
+  sartaChipSet();
 
   const ESTADO_ORDER = ['ACTIVA', 'INACTIVA', 'RESERVA', 'NO PERTENECE'];
   const estadoOpts = d.estado.slice().sort((a, b) => {
