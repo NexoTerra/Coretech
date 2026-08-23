@@ -20,6 +20,9 @@ function dayToYM(dayNum, epochStr) {
 function dayToYear(dayNum, epochStr) {
   return dayToDate(dayNum, epochStr).getUTCFullYear();
 }
+function dayToDateStr(dayNum, epochStr) {
+  return dayToDate(dayNum, epochStr).toISOString().slice(0, 10);
+}
 
 const MONTH_NAMES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
 
@@ -529,6 +532,6 @@ if (typeof module !== 'undefined') {
     vidaUtilGlobal, vidaUtilPorHerramienta, cumplimientoPorMes,
     cpmTrend, rendimientoPorPieza,
     avgMetrosPorReferenciaPorMes, cpmPorSarta, gananciaPerdidaPorHerramienta,
-    dayToYM, dayToYear, MONTH_NAMES,
+    dayToYM, dayToYear, dayToDateStr, MONTH_NAMES,
   };
 }

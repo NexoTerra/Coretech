@@ -29,10 +29,6 @@ function ymLabel(ym) {
   const [y, m] = ym.split('-');
   return MONTH_ABBR[parseInt(m, 10) - 1] + ' ' + y.slice(2);
 }
-function dayToDateStr(dayNum, epoch) {
-  const d = new Date(new Date(epoch + 'T00:00:00Z').getTime() + dayNum * 86400000);
-  return d.toISOString().slice(0, 10);
-}
 function computePartialMonths(bundle) {
   const epoch = bundle.meta.epoch;
   let minD = Infinity, maxD = -Infinity;
@@ -337,12 +333,13 @@ function renderCPM(bundle, life) {
   const top = rows.filter(r => r.cpmReal !== null).slice().sort((a, b) => b.metrosTotales - a.metrosTotales).slice(0, 12);
   const items = top.map(r => ({
     label: r.herramienta,
-    value: r.cpmReal,
-    color: r.sobrecostoPct === null ? 'var(--gray2)' : r.sobrecostoPct <= 15 ? 'var(--green)' : r.sobrecostoPct <= 60 ? 'var(--orange)' : 'var(--red)',
-    valueLabel: `$${r.cpmReal.toFixed(2)}/m`,
-    tooltip: `CPM real $${r.cpmReal.toFixed(3)}/m · CPM ideal ${r.cpmIdeal ? '$' + r.cpmIdeal.toFixed(3) + '/m' : '—'} · ${r.n} piezas`,
+    a: r.cpmReal, b: r.cpmIdeal,
+    aValueLabel: `$${r.cpmReal.toFixed(2)}`,
+    bValueLabel: r.cpmIdeal !== null ? `$${r.cpmIdeal.toFixed(2)}` : '—',
+    tooltipA: `$${r.cpmReal.toFixed(3)}/m · ${r.n} piezas`,
+    tooltipB: r.cpmIdeal !== null ? `$${r.cpmIdeal.toFixed(3)}/m` : 'sin precio registrado',
   }));
-  document.getElementById('chartCPM').innerHTML = svgHBarChart(items, { width: containerWidth('chartCPM'), rowH: 26 });
+  document.getElementById('chartCPM').innerHTML = svgHBarChartPaired(items, { width: containerWidth('chartCPM'), rowH: 34, aLabel: 'CPM real', bLabel: 'CPM ideal' });
 }
 
 // ============ CPM mensual comparable (histórico + actual) ============
@@ -390,9 +387,10 @@ function renderCPMTrend(bundle, prod) {
   const months = Array.from(monthSet).sort();
   document.getElementById('cpmTrendConclusion').textContent = describeCpmTrend(sartaRows, months);
 
-  const blocks = sartaRows.map(s => {
+  const blocks = sartaRows.map((s, si) => {
     const withData = s.referencias.filter(r => r.months.some(m => m.cpm !== null));
     const missing = s.referencias.filter(r => !r.found);
+    const chartId = `cpmTrendChart_${si}`;
     const thead = `<tr><th>Referencia</th><th>Herramienta</th>${months.map(ym => `<th class="num">${esc(ymLabel(ym))}</th>`).join('')}</tr>`;
     const tbody = withData.map(r => {
       const byYm = new Map(r.months.map(m => [m.ym, m]));
@@ -415,11 +413,23 @@ function renderCPMTrend(bundle, prod) {
       : '';
     return `<div class="sarta-block">
       <h4 style="margin:14px 0 6px; font-size:13px;">${esc(s.sarta)}</h4>
+      <div id="${chartId}"></div>
       <div class="table-wrap"><table>${thead}<tbody>${tbody || `<tr><td colspan="${2 + months.length}" class="empty-note">Sin datos.</td></tr>`}</tbody></table></div>
       ${missingNote}
     </div>`;
   }).join('');
   section.innerHTML = blocks;
+
+  sartaRows.forEach((s, si) => {
+    const chartEl = document.getElementById(`cpmTrendChart_${si}`);
+    if (!chartEl) return;
+    const withData = s.referencias.filter(r => r.months.some(m => m.cpm !== null));
+    const series = withData.map(r => {
+      const byYm = new Map(r.months.map(m => [m.ym, m]));
+      return { name: r.herramienta, values: months.map(ym => { const m = byYm.get(ym); return m && m.cpm !== null ? m.cpm : null; }) };
+    });
+    chartEl.innerHTML = svgLineChart(months.map(ymLabel), series, { width: containerWidth(`cpmTrendChart_${si}`), valueFmt: v => '$' + v.toFixed(2) });
+  });
 }
 
 // ============ ganancia / pérdida por herramienta ============
@@ -659,12 +669,13 @@ function handleFile(file) {
   if (!file) return;
   showImportStatus('Leyendo ' + file.name + '…', 'info');
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
+    let newBundle;
     try {
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, { type: 'array', cellDates: false });
       const fallbackCatalog = (BUNDLE.catalog && Object.keys(BUNDLE.catalog).length) ? BUNDLE.catalog : DEFAULT_BUNDLE.catalog;
-      const newBundle = buildBundleFromWorkbook(wb, file.name, fallbackCatalog);
+      newBundle = buildBundleFromWorkbook(wb, file.name, fallbackCatalog);
       if (!newBundle.prod.length) throw new Error('El archivo no contiene registros de producción reconocibles.');
       if (!Object.keys(newBundle.catalog || {}).length) newBundle.catalog = fallbackCatalog;
       BUNDLE = newBundle;
@@ -672,9 +683,16 @@ function handleFile(file) {
       herrForRefCache.clear();
       populateFilterOptions();
       renderAll();
-      showImportStatus(`Listo: ${fmtNum(newBundle.prod.length)} registros diarios y ${fmtNum(newBundle.life.length)} piezas cargadas desde "${file.name}". Todas las métricas y gráficos se recalcularon.`, 'ok');
+      showImportStatus(`Cargado en tu vista: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}". Guardando para todos los usuarios…`, 'info');
     } catch (err) {
       showImportStatus('No se pudo procesar el archivo: ' + err.message, 'err');
+      return;
+    }
+    try {
+      await publishSharedBundle(newBundle, file.name);
+      showImportStatus(`Listo: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}", guardado y visible para todos los usuarios.`, 'ok');
+    } catch (pubErr) {
+      showImportStatus(`Tu vista se actualizó, pero no se pudo guardar para los demás usuarios (${pubErr.message}). Vuelve a intentarlo.`, 'err');
     }
   };
   reader.onerror = () => showImportStatus('Error leyendo el archivo.', 'err');
@@ -772,17 +790,26 @@ async function renderUserMgmt() {
 function updateAuthUI() {
   const badge = document.getElementById('userBadge');
   const usersBtn = document.getElementById('usersBtn');
+  const importBtn = document.getElementById('importBtn');
   if (currentUser) {
     badge.textContent = `${currentUser.email} · ${currentUser.role === 'admin' ? 'Administrador' : 'Visualizador'}`;
     badge.hidden = false;
     usersBtn.hidden = currentUser.role !== 'admin';
+    importBtn.hidden = currentUser.role !== 'admin';
   }
+}
+async function loadSharedBundleIntoApp() {
+  try {
+    const shared = await loadSharedBundle();
+    if (shared) BUNDLE = shared;
+  } catch (e) { /* se queda con el bundle base embebido */ }
 }
 async function enterApp(user) {
   currentUser = user;
   document.body.classList.add('authed');
   updateAuthUI();
   await refreshConciliacion();
+  await loadSharedBundleIntoApp();
   if (currentUser.role === 'admin') renderUserMgmt();
   if (!appInitialized) { appInitialized = true; initApp(); }
   else { populateFilterOptions(); renderAll(); }
@@ -901,7 +928,7 @@ document.querySelectorAll('.table-tabs button').forEach(b => b.addEventListener(
   document.getElementById('restoreBtn').addEventListener('click', () => {
     BUNDLE = DEFAULT_BUNDLE; filters = EMPTY_FILTERS();
     herrForRefCache.clear(); populateFilterOptions(); renderAll();
-    showImportStatus('Se restauraron los datos originales del archivo base.', 'info');
+    showImportStatus('Se restauró tu vista al archivo base original. Esto no cambia la base de datos compartida — para eso, importa un Excel.', 'info');
   });
 
   populateFilterOptions();

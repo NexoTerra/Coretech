@@ -211,6 +211,9 @@ select{
 .axis-line{stroke:var(--border); stroke-width:1;}
 .ref-line{stroke:var(--text-faint); stroke-width:1; stroke-dasharray:3 3;}
 .empty-note{color:var(--text-faint); font-size:12.5px; padding:20px 0; text-align:center;}
+.chart-legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--text-dim); margin-bottom:6px;}
+.legend-item{display:inline-flex; align-items:center; gap:5px;}
+.legend-dot{width:9px; height:9px; border-radius:2px; display:inline-block; flex:none;}
 
 /* ---- motivo de baja ---- */
 .motivo-card{margin-bottom:16px;}
@@ -353,14 +356,15 @@ footer b{color:var(--text-dim);}
       (<b>AMS_Diario</b> / <b>BD_Aceros</b> / <b>Referencia</b>, o el maestro original <b>NUEVO AMS BD
       RENDIMIENTOS</b> / <b>BD CONSECUTIVOS ACEROS</b> / <b>RENDIMIENTOS</b>). El precio unitario y el metro
       garantizado se toman del catálogo ya cargado cuando el archivo nuevo no trae su propia hoja de referencia.
-      El procesamiento ocurre en tu navegador — el archivo no se envía a ningún servidor.
+      El archivo se procesa en tu navegador y luego se guarda en la base de datos compartida, para que todos los
+      usuarios (en cualquier dispositivo) vean la misma información sin tener que volver a importar.
     </p>
     <div class="dropzone" id="dropzone">
       Arrastra aquí el archivo .xlsx, o
       <button class="small primary" id="browseBtn" type="button">elegir archivo…</button>
       <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
     </div>
-    <button class="small" id="restoreBtn" type="button">↺ Restaurar datos originales</button>
+    <button class="small" id="restoreBtn" type="button">↺ Restaurar vista al archivo base</button>
     <div class="import-status" id="importStatus" style="display:none;"></div>
   </section>
 
@@ -494,10 +498,10 @@ footer b{color:var(--text-dim);}
     <h3>CPM — Costo por metro</h3>
     <p class="chart-sub">
       CPM real = precio unitario de la herramienta / metros que realmente logra en promedio. CPM ideal = precio
-      unitario / metro garantizado. Convención heredada de la hoja CPM de Marmato.
+      unitario / metro garantizado.
     </p>
     <div class="kpirow" id="cpmKpiRow"></div>
-    <h4 style="margin:18px 0 4px; font-size:13px;">CPM real por herramienta (top 12 por metros perforados)</h4>
+    <h4 style="margin:18px 0 4px; font-size:13px;">CPM real vs. CPM ideal por herramienta (top 12 por metros perforados)</h4>
     <div id="chartCPM"></div>
   </section>
 
@@ -603,8 +607,9 @@ footer b{color:var(--text-dim);}
           "parcial" en los gráficos para no confundirlos con una caída real de producción.</dd>
       </dl>
       <p class="methodology-note">
-        Las cifras se recalculan sobre los filtros activos en cada momento. La conciliación y los usuarios que
-        agregues se guardan solo en este navegador hasta que exista una base de datos compartida.
+        Las cifras se recalculan sobre los filtros activos en cada momento. Los datos importados, la conciliación
+        y los usuarios se guardan en una base de datos compartida — cualquier persona con acceso ve la misma
+        información, sin importar el dispositivo desde el que entre.
         Paleta de datos y tipografía de títulos según el Manual de Marca CORE TECH 2026.
       </p>
     </div>
@@ -657,6 +662,9 @@ function dayToYM(dayNum, epochStr) {
 }
 function dayToYear(dayNum, epochStr) {
   return dayToDate(dayNum, epochStr).getUTCFullYear();
+}
+function dayToDateStr(dayNum, epochStr) {
+  return dayToDate(dayNum, epochStr).toISOString().slice(0, 10);
 }
 
 const MONTH_NAMES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
@@ -1167,7 +1175,7 @@ if (typeof module !== 'undefined') {
     vidaUtilGlobal, vidaUtilPorHerramienta, cumplimientoPorMes,
     cpmTrend, rendimientoPorPieza,
     avgMetrosPorReferenciaPorMes, cpmPorSarta, gananciaPerdidaPorHerramienta,
-    dayToYM, dayToYear, MONTH_NAMES,
+    dayToYM, dayToYear, dayToDateStr, MONTH_NAMES,
   };
 }
 </script>
@@ -1729,7 +1737,132 @@ function buildBundleFromWorkbook(workbook, sourceName, fallbackCatalog) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildBundleFromWorkbook, buildBundleFromWideFormat, buildBundleFromLongFormat, findSheet, normHeader };
+  module.exports = { buildBundleFromWorkbook, buildBundleFromWideFormat, buildBundleFromLongFormat, findSheet, normHeader, Dict_ };
+}
+</script>
+<script>// ---------- Bundle <-> base de datos compartida (Supabase) ----------
+// Convierte entre el "bundle" compacto (diccionarios indexados, ver agg.js)
+// que usa el motor de agregación y las filas planas (con texto y fechas
+// reales) que se guardan en Supabase. Se guarda desnormalizado a propósito:
+// así la base de datos es legible/consultable por sí sola, y el bundle
+// indexado se reconstruye en el navegador con la misma lógica de Dict_ que
+// ya usa importer.js al leer un Excel.
+
+function dateStrToDay(dateStr, epoch) {
+  if (!dateStr) return null;
+  const epochMs = new Date(epoch + 'T00:00:00Z').getTime();
+  const dMs = new Date(dateStr + 'T00:00:00Z').getTime();
+  return Math.round((dMs - epochMs) / 86400000);
+}
+function numOrNull(v) {
+  return (v === null || v === undefined || v === '') ? null : Number(v);
+}
+
+function bundleToRows(bundle) {
+  const d = bundle.dict;
+  const catalogRows = Object.entries(bundle.catalog || {}).map(([ref_code, c]) => ({
+    ref_code, descripcion: c.d ?? null, precio: c.p ?? null, metro_garantizado: c.g ?? null, metro_aceptable: c.a ?? null,
+  }));
+  const prodRows = bundle.prod.map(p => {
+    const [fecha, minaIdx, tipoIdx, equipoIdx, refIdx, herrIdx, codigo_marcado, metros, esPrimario] = p;
+    return {
+      fecha: dayToDateStr(fecha, bundle.meta.epoch),
+      mina: d.mina[minaIdx] ?? null, tipo: d.tipo[tipoIdx] ?? null, equipo: d.equipo[equipoIdx] ?? null,
+      ref_code: d.ref[refIdx] ?? null, herramienta: d.herr[herrIdx] ?? null,
+      codigo_marcado, metros, es_primario: !!esPrimario,
+    };
+  });
+  const piezaRows = bundle.life.map(l => {
+    const [codigo_marcado, refIdx, herrIdx, mp, mg, estadoIdx, bucket, causaIdx, fallaIdx, minaIdx, equipoIdx, fechaFinal, usd, fechaInicio] = l;
+    return {
+      codigo_marcado, ref_code: d.ref[refIdx] ?? null, herramienta: d.herr[herrIdx] ?? null,
+      metros_perforados: mp, metro_garantizado: mg ?? null,
+      estado: (estadoIdx !== null && estadoIdx !== undefined) ? d.estado[estadoIdx] : null,
+      motivo_bucket: bucket ?? null,
+      causa: (causaIdx !== null && causaIdx !== undefined) ? d.causa[causaIdx] : null,
+      falla: (fallaIdx !== null && fallaIdx !== undefined) ? d.falla[fallaIdx] : null,
+      mina: (minaIdx !== null && minaIdx !== undefined) ? d.mina[minaIdx] : null,
+      equipo: (equipoIdx !== null && equipoIdx !== undefined) ? d.equipo[equipoIdx] : null,
+      fecha_inicio: (fechaInicio !== null && fechaInicio !== undefined) ? dayToDateStr(fechaInicio, bundle.meta.epoch) : null,
+      fecha_final: (fechaFinal !== null && fechaFinal !== undefined) ? dayToDateStr(fechaFinal, bundle.meta.epoch) : null,
+      precio_usd: usd ?? null,
+    };
+  });
+  const sartaRows = [];
+  Object.entries(bundle.sartas || {}).forEach(([nombre_sarta, refs]) => {
+    (refs || []).forEach(ref_code => sartaRows.push({ nombre_sarta, ref_code }));
+  });
+  return { catalogRows, prodRows, piezaRows, sartaRows };
+}
+
+function rowsToBundle(rows, metaInfo) {
+  const EPOCH = '2020-01-01';
+  const D_mina = new Dict_(), D_tipo = new Dict_(), D_equipo = new Dict_(), D_ref = new Dict_(),
+        D_herr = new Dict_(), D_estado = new Dict_(), D_causa = new Dict_(), D_falla = new Dict_();
+  D_estado.get('RESERVA'); // disponible como filtro aunque nadie la tenga asignada
+
+  const catalog = {};
+  rows.catalogRows.forEach(r => {
+    catalog[r.ref_code] = { d: r.descripcion, p: numOrNull(r.precio), g: numOrNull(r.metro_garantizado), a: numOrNull(r.metro_aceptable) };
+  });
+
+  const prod = rows.prodRows.map(r => [
+    dateStrToDay(r.fecha, EPOCH), D_mina.get(r.mina), D_tipo.get(r.tipo), D_equipo.get(r.equipo),
+    D_ref.get(r.ref_code), D_herr.get(r.herramienta), r.codigo_marcado, Number(r.metros), r.es_primario ? 1 : 0,
+  ]);
+
+  const life = rows.piezaRows.map(r => [
+    r.codigo_marcado, D_ref.get(r.ref_code), D_herr.get(r.herramienta),
+    numOrNull(r.metros_perforados), numOrNull(r.metro_garantizado),
+    D_estado.get(r.estado), r.motivo_bucket || 'SIN_CAUSA',
+    r.causa ? D_causa.get(r.causa) : null, r.falla ? D_falla.get(r.falla) : null,
+    D_mina.get(r.mina), D_equipo.get(r.equipo),
+    dateStrToDay(r.fecha_final, EPOCH), numOrNull(r.precio_usd), dateStrToDay(r.fecha_inicio, EPOCH),
+  ]);
+
+  const sartas = {};
+  rows.sartaRows.forEach(r => {
+    if (!sartas[r.nombre_sarta]) sartas[r.nombre_sarta] = [];
+    sartas[r.nombre_sarta].push(r.ref_code);
+  });
+
+  return {
+    meta: { epoch: EPOCH, generated: metaInfo.generated, source: metaInfo.source },
+    dict: { mina: D_mina.items, tipo: D_tipo.items, equipo: D_equipo.items, ref: D_ref.items, herr: D_herr.items, estado: D_estado.items, causa: D_causa.items, falla: D_falla.items },
+    catalog, prod, life, sartas,
+  };
+}
+
+// Trae el dataset activo desde Supabase, o null si nadie ha importado nada
+// todavía (en ese caso el dashboard sigue mostrando el bundle embebido).
+async function loadSharedBundle() {
+  const [catalogRows, prodRows, piezaRows, sartaRows, meta] = await Promise.all([
+    CTAuth.fetchTable('catalog_refs'),
+    CTAuth.fetchTable('produccion'),
+    CTAuth.fetchTable('piezas'),
+    CTAuth.fetchTable('sartas'),
+    CTAuth.getDatasetMeta(),
+  ]);
+  if (!meta || !prodRows.length) return null;
+  return rowsToBundle({ catalogRows, prodRows, piezaRows, sartaRows }, {
+    generated: meta.imported_at ? new Date(meta.imported_at).toISOString().slice(0, 16).replace('T', ' ') : '',
+    source: meta.source_filename || '',
+  });
+}
+
+// Publica un bundle recién importado como el dataset compartido (requiere rol
+// de Administrador — lo hace cumplir el RLS de cada tabla, no este código).
+async function publishSharedBundle(bundle, sourceFilename) {
+  const rows = bundleToRows(bundle);
+  await CTAuth.replaceTable('catalog_refs', 'ref_code', rows.catalogRows);
+  await CTAuth.replaceTable('sartas', 'id', rows.sartaRows);
+  await CTAuth.replaceTable('piezas', 'codigo_marcado', rows.piezaRows);
+  await CTAuth.replaceTable('produccion', 'id', rows.prodRows);
+  await CTAuth.setDatasetMeta(sourceFilename);
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { bundleToRows, rowsToBundle, dateStrToDay };
 }
 </script>
 <script>// ---------- Lightweight inline-SVG chart builders (no external deps) ----------
@@ -1847,6 +1980,95 @@ function svgHBarChart(items, opts) {
   return `<div style="overflow-x:auto;"><svg viewBox="0 ${-topPad} ${W} ${H + topPad}" width="100%" height="${H + topPad}" style="min-width:${Math.min(W,320)}px" role="img">${rows}${refLines}</svg></div>`;
 }
 
+// Horizontal grouped bar chart, 2 bars per row for comparison (e.g. CPM real
+// vs. CPM ideal). items: [{label, a, b, aValueLabel?, bValueLabel?, tooltipA?, tooltipB?}]
+function svgHBarChartPaired(items, opts) {
+  opts = opts || {};
+  const W = Math.max(opts.width || 560, 280);
+  const rowH = opts.rowH || 34;
+  const padT = 8;
+  const padL = Math.round(Math.min(opts.padL || 190, W * 0.42));
+  const padR = Math.round(Math.min(opts.padR || 70, W * 0.22));
+  const H = padT * 2 + items.length * rowH;
+  if (!items.length) return `<div class="empty-note">Sin datos para los filtros actuales.</div>`;
+  const maxV = opts.maxV || Math.max(...items.map(d => Math.max(d.a || 0, d.b || 0)), 1);
+  const plotW = W - padL - padR;
+  const colorA = opts.colorA || 'var(--navy)';
+  const colorB = opts.colorB || 'var(--cyan3)';
+  const aLabel = opts.aLabel || 'A', bLabel = opts.bLabel || 'B';
+  const subH = Math.min(12, (rowH - 10) / 2);
+
+  let rows = '';
+  items.forEach((d, i) => {
+    const y = padT + i * rowH;
+    const label = truncateToWidth(d.label, padL - 14);
+    rows += `<text x="${padL - 10}" y="${(y + rowH / 2 + 4).toFixed(1)}" text-anchor="end" class="bar-label">${esc(label)}</text>`;
+    if (d.a !== null && d.a !== undefined) {
+      const wa = Math.max(plotW * (Math.min(d.a, maxV) / maxV), 2);
+      rows += `<rect x="${padL}" y="${(y + 2).toFixed(1)}" width="${wa.toFixed(1)}" height="${subH.toFixed(1)}" rx="3" fill="${colorA}"><title>${esc(d.label)} · ${esc(aLabel)}: ${d.tooltipA || fmtNum(d.a, 3)}</title></rect>`;
+      rows += `<text x="${(padL + wa + 6).toFixed(1)}" y="${(y + 2 + subH / 2 + 3.5).toFixed(1)}" class="bar-value">${esc(d.aValueLabel || fmtCompact(d.a))}</text>`;
+    }
+    if (d.b !== null && d.b !== undefined) {
+      const yb = y + 2 + subH + 3;
+      const wb = Math.max(plotW * (Math.min(d.b, maxV) / maxV), 2);
+      rows += `<rect x="${padL}" y="${yb.toFixed(1)}" width="${wb.toFixed(1)}" height="${subH.toFixed(1)}" rx="3" fill="${colorB}"><title>${esc(d.label)} · ${esc(bLabel)}: ${d.tooltipB || fmtNum(d.b, 3)}</title></rect>`;
+      rows += `<text x="${(padL + wb + 6).toFixed(1)}" y="${(yb + subH / 2 + 3.5).toFixed(1)}" class="bar-value">${esc(d.bValueLabel || fmtCompact(d.b))}</text>`;
+    }
+  });
+  const legend = `<div class="chart-legend"><span class="legend-item"><span class="legend-dot" style="background:${colorA}"></span>${esc(aLabel)}</span><span class="legend-item"><span class="legend-dot" style="background:${colorB}"></span>${esc(bLabel)}</span></div>`;
+  return `${legend}<div style="overflow-x:auto;"><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="min-width:${Math.min(W,320)}px" role="img">${rows}</svg></div>`;
+}
+
+// Multi-series line chart (e.g. CPM por herramienta a través de varios meses).
+// categories: [string]; series: [{name, color?, values: [number|null]}] — un
+// valor null deja un hueco en la línea (mes sin dato) en vez de interpolar.
+function svgLineChart(categories, series, opts) {
+  opts = opts || {};
+  const W = opts.width || 560, H = opts.height || 220;
+  const padL = 44, padR = 14, padT = 10, padB = 34;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const usable = series.filter(s => s.values.some(v => v !== null && v !== undefined));
+  if (!categories.length || !usable.length) return `<div class="empty-note">Sin datos para los filtros actuales.</div>`;
+  const allVals = usable.flatMap(s => s.values.filter(v => v !== null && v !== undefined));
+  const maxV = opts.maxV || Math.max(...allVals) * 1.15;
+  const fmtV = opts.valueFmt || fmtCompact;
+  const n = categories.length;
+  const stepX = n > 1 ? plotW / (n - 1) : 0;
+  const xAt = i => n > 1 ? padL + i * stepX : padL + plotW / 2;
+  const yAt = v => padT + plotH - plotH * (Math.min(v, maxV) / maxV);
+
+  let gridLines = '';
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const y = padT + plotH - (plotH * i / ticks);
+    const val = maxV * i / ticks;
+    gridLines += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" class="axis-line"/>`;
+    gridLines += `<text x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" class="bar-label">${fmtV(val)}</text>`;
+  }
+  let labels = '';
+  categories.forEach((cat, i) => {
+    labels += `<text x="${xAt(i).toFixed(1)}" y="${H - padB + 15}" text-anchor="middle" class="bar-label">${esc(truncateToWidth(cat, stepX || plotW, 9.5))}</text>`;
+  });
+
+  let paths = '', legend = '';
+  const palette = ['var(--ramp3)', 'var(--orange)', 'var(--green)', 'var(--ramp1)', 'var(--red)', 'var(--navy)'];
+  usable.forEach((s, si) => {
+    const color = s.color || palette[si % palette.length];
+    let d = '', drawing = false, dots = '';
+    s.values.forEach((v, i) => {
+      if (v === null || v === undefined) { drawing = false; return; }
+      const x = xAt(i), y = yAt(v);
+      d += (drawing ? ' L ' : ' M ') + x.toFixed(1) + ',' + y.toFixed(1);
+      drawing = true;
+      dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${color}"><title>${esc(s.name)} · ${esc(categories[i])}: ${fmtV(v)}</title></circle>`;
+    });
+    paths += `<path d="${d.trim()}" fill="none" stroke="${color}" stroke-width="2"/>${dots}`;
+    legend += `<span class="legend-item"><span class="legend-dot" style="background:${color}"></span>${esc(s.name)}</span>`;
+  });
+
+  return `<div class="chart-legend">${legend}</div><div style="overflow-x:auto;"><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="min-width:${Math.min(W,320)}px" role="img">${gridLines}${paths}${labels}</svg></div>`;
+}
+
 function rendPillClass(pct) {
   if (pct >= 100) return 'ok';
   if (pct >= 85) return 'warn';
@@ -1859,7 +2081,7 @@ function rendColor(pct) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { fmtNum, fmtCompact, esc, svgVBarChart, svgHBarChart, rendPillClass, rendColor };
+  module.exports = { fmtNum, fmtCompact, esc, svgVBarChart, svgHBarChart, svgHBarChartPaired, svgLineChart, rendPillClass, rendColor };
 }
 </script>
 <script>var supabase=(function(e){function t(e,t){var n={};for(var r in e)Object.prototype.hasOwnProperty.call(e,r)&&t.indexOf(r)<0&&(n[r]=e[r]);if(e!=null&&typeof Object.getOwnPropertySymbols==`function`)for(var i=0,r=Object.getOwnPropertySymbols(e);i<r.length;i++)t.indexOf(r[i])<0&&Object.prototype.propertyIsEnumerable.call(e,r[i])&&(n[r[i]]=e[r[i]]);return n}function n(e,t,n,r){function i(e){return e instanceof n?e:new n(function(t){t(e)})}return new(n||=Promise)(function(n,a){function o(e){try{c(r.next(e))}catch(e){a(e)}}function s(e){try{c(r.throw(e))}catch(e){a(e)}}function c(e){e.done?n(e.value):i(e.value).then(o,s)}c((r=r.apply(e,t||[])).next())})}let r=e=>e?(...t)=>e(...t):(...e)=>fetch(...e);var i=class extends Error{constructor(e,t=`FunctionsError`,n){super(e),this.name=t,this.context=n}toJSON(){return{name:this.name,message:this.message,context:this.context}}},a=class extends i{constructor(e){super(`Failed to send a request to the Edge Function`,`FunctionsFetchError`,e)}},o=class extends i{constructor(e){super(`Relay Error invoking the Edge Function`,`FunctionsRelayError`,e)}},s=class extends i{constructor(e){super(`Edge Function returned a non-2xx status code`,`FunctionsHttpError`,e)}},c;(function(e){e.Any=`any`,e.ApNortheast1=`ap-northeast-1`,e.ApNortheast2=`ap-northeast-2`,e.ApSouth1=`ap-south-1`,e.ApSoutheast1=`ap-southeast-1`,e.ApSoutheast2=`ap-southeast-2`,e.CaCentral1=`ca-central-1`,e.EuCentral1=`eu-central-1`,e.EuWest1=`eu-west-1`,e.EuWest2=`eu-west-2`,e.EuWest3=`eu-west-3`,e.SaEast1=`sa-east-1`,e.UsEast1=`us-east-1`,e.UsWest1=`us-west-1`,e.UsWest2=`us-west-2`})(c||={});var l=class{constructor(e,{headers:t={},customFetch:n,region:i=c.Any}={}){this.url=e,this.headers=t,this.region=i,this.fetch=r(n)}setAuth(e){this.headers.Authorization=`Bearer ${e}`}invoke(e){return n(this,arguments,void 0,function*(e,t={}){var n;let r,i,c;try{let{headers:n,method:l,body:u,signal:d,timeout:f}=t,p={},{region:m}=t;m||=this.region;let h=new URL(`${this.url}/${e}`);m&&m!==`any`&&(p[`x-region`]=m,h.searchParams.set(`forceFunctionRegion`,m));let g,ee=!!n&&Object.keys(n).some(e=>e.toLowerCase()===`content-type`);u&&!ee?typeof Blob<`u`&&u instanceof Blob||u instanceof ArrayBuffer?(p[`Content-Type`]=`application/octet-stream`,g=u):typeof u==`string`?(p[`Content-Type`]=`text/plain`,g=u):typeof FormData<`u`&&u instanceof FormData?g=u:(p[`Content-Type`]=`application/json`,g=JSON.stringify(u)):g=u&&typeof u!=`string`&&!(typeof Blob<`u`&&u instanceof Blob)&&!(u instanceof ArrayBuffer)&&!(typeof FormData<`u`&&u instanceof FormData)?JSON.stringify(u):u;let te=d;f&&(i=new AbortController,r=setTimeout(()=>i.abort(),f),d?(te=i.signal,c=()=>i.abort(),d.addEventListener(`abort`,c)):te=i.signal);let _=yield this.fetch(h.toString(),{method:l||`POST`,headers:Object.assign(Object.assign(Object.assign({},p),this.headers),n),body:g,signal:te}).catch(e=>{throw new a(e)}),ne=_.headers.get(`x-relay-error`);if(ne&&ne===`true`)throw new o(_);if(!_.ok)throw new s(_);let re=(_.headers.get(`Content-Type`)??`text/plain`).split(`;`)[0].trim().toLowerCase(),ie;return ie=re===`application/json`?yield _.json():re===`application/octet-stream`||re===`application/pdf`?yield _.blob():re===`text/event-stream`?_:re===`multipart/form-data`?yield _.formData():yield _.text(),{data:ie,error:null,response:_}}catch(e){return{data:null,error:e,response:e instanceof s||e instanceof o?e.context:void 0}}finally{r&&clearTimeout(r),c&&((n=t.signal)==null||n.removeEventListener(`abort`,c))}})}};let u=e=>Math.min(1e3*2**e,3e4),d=[520,503],f=[`GET`,`HEAD`,`OPTIONS`];var p=class extends Error{constructor(e){super(e.message),this.name=`PostgrestError`,this.details=e.details,this.hint=e.hint,this.code=e.code}toJSON(){return{name:this.name,message:this.message,details:this.details,hint:this.hint,code:this.code}}};function m(e){"@babel/helpers - typeof";return m=typeof Symbol==`function`&&typeof Symbol.iterator==`symbol`?function(e){return typeof e}:function(e){return e&&typeof Symbol==`function`&&e.constructor===Symbol&&e!==Symbol.prototype?`symbol`:typeof e},m(e)}function h(e,t){if(m(e)!=`object`||!e)return e;var n=e[Symbol.toPrimitive];if(n!==void 0){var r=n.call(e,t||`default`);if(m(r)!=`object`)return r;throw TypeError(`@@toPrimitive must return a primitive value.`)}return(t===`string`?String:Number)(e)}function g(e){var t=h(e,`string`);return m(t)==`symbol`?t:t+``}function ee(e,t,n){return(t=g(t))in e?Object.defineProperty(e,t,{value:n,enumerable:!0,configurable:!0,writable:!0}):e[t]=n,e}function te(e,t){var n=Object.keys(e);if(Object.getOwnPropertySymbols){var r=Object.getOwnPropertySymbols(e);t&&(r=r.filter(function(t){return Object.getOwnPropertyDescriptor(e,t).enumerable})),n.push.apply(n,r)}return n}function _(e){for(var t=1;t<arguments.length;t++){var n=arguments[t]==null?{}:arguments[t];t%2?te(Object(n),!0).forEach(function(t){ee(e,t,n[t])}):Object.getOwnPropertyDescriptors?Object.defineProperties(e,Object.getOwnPropertyDescriptors(n)):te(Object(n)).forEach(function(t){Object.defineProperty(e,t,Object.getOwnPropertyDescriptor(n,t))})}return e}function ne(e,t){return new Promise(n=>{if(t?.aborted){n();return}let r=setTimeout(()=>{t?.removeEventListener(`abort`,i),n()},e);function i(){clearTimeout(r),n()}t?.addEventListener(`abort`,i)})}function re(e,t,n,r){return!(!r||n>=3||!f.includes(e)||!d.includes(t))}var ie=class{constructor(e){this.shouldThrowOnError=!1,this.retryEnabled=!0,this.method=e.method,this.url=e.url,this.headers=new Headers(e.headers),this.schema=e.schema,this.body=e.body,this.shouldThrowOnError=e.shouldThrowOnError??!1,this.signal=e.signal,this.isMaybeSingle=e.isMaybeSingle??!1,this.shouldStripNulls=e.shouldStripNulls??!1,this.urlLengthLimit=e.urlLengthLimit??8e3,this.retryEnabled=e.retry??!0,e.fetch?this.fetch=e.fetch:this.fetch=fetch}throwOnError(){return this.shouldThrowOnError=!0,this}stripNulls(){if(this.headers.get(`Accept`)===`text/csv`)throw Error(`stripNulls() cannot be used with csv()`);return this.shouldStripNulls=!0,this}setHeader(e,t){return this.headers=new Headers(this.headers),this.headers.set(e,t),this}retry(e){return this.retryEnabled=e,this}then(e,t){var n=this;if(this.schema===void 0||([`GET`,`HEAD`].includes(this.method)?this.headers.set(`Accept-Profile`,this.schema):this.headers.set(`Content-Profile`,this.schema)),this.method!==`GET`&&this.method!==`HEAD`&&this.headers.set(`Content-Type`,`application/json`),this.shouldStripNulls){let e=this.headers.get(`Accept`);e===`application/vnd.pgrst.object+json`?this.headers.set(`Accept`,`application/vnd.pgrst.object+json;nulls=stripped`):(!e||e===`application/json`)&&this.headers.set(`Accept`,`application/vnd.pgrst.array+json;nulls=stripped`)}let r=this.fetch,i=(async()=>{let e=0;for(;;){let t={};n.headers.forEach((e,n)=>{t[n]=e}),e>0&&(t[`X-Retry-Count`]=String(e));let i;try{i=await r(n.url.toString(),{method:n.method,headers:t,body:JSON.stringify(n.body,(e,t)=>typeof t==`bigint`?t.toString():t),signal:n.signal})}catch(t){if(t?.name===`AbortError`||t?.code===`ABORT_ERR`||!f.includes(n.method))throw t;if(n.retryEnabled&&e<3){let t=u(e);e++,await ne(t,n.signal);continue}throw t}if(re(n.method,i.status,e,n.retryEnabled)){let t=i.headers?.get(`Retry-After`)??null,r=t===null?u(e):Math.max(0,parseInt(t,10)||0)*1e3;await i.text(),e++,await ne(r,n.signal);continue}return await n.processResponse(i)}})();return this.shouldThrowOnError||(i=i.catch(e=>{let t=``,n=``,r=``,i=e?.cause;if(i){let n=i?.message??``,r=i?.code??``;t=`${e?.name??`FetchError`}: ${e?.message}`,t+=`\n\nCaused by: ${i?.name??`Error`}: ${n}`,r&&(t+=` (${r})`),i?.stack&&(t+=`\n${i.stack}`)}else t=e?.stack??``;let a=this.url.toString().length;return e?.name===`AbortError`||e?.code===`ABORT_ERR`?(r=``,n=`Request was aborted (timeout or manual cancellation)`,a>this.urlLengthLimit&&(n+=`. Note: Your request URL is ${a} characters, which may exceed server limits. If selecting many fields, consider using views. If filtering with large arrays (e.g., .in('id', [many IDs])), consider using an RPC function to pass values server-side.`)):(i?.name===`HeadersOverflowError`||i?.code===`UND_ERR_HEADERS_OVERFLOW`)&&(r=``,n=`HTTP headers exceeded server limits (typically 16KB)`,a>this.urlLengthLimit&&(n+=`. Your request URL is ${a} characters. If selecting many fields, consider using views. If filtering with large arrays (e.g., .in('id', [200+ IDs])), consider using an RPC function instead.`)),{success:!1,error:{message:`${e?.name??`FetchError`}: ${e?.message}`,details:t,hint:n,code:r},data:null,count:null,status:0,statusText:``}})),i.then(e,t)}async processResponse(e){var t=this;let n=null,r=null,i=null,a=e.status,o=e.statusText;if(e.ok){if(t.method!==`HEAD`){let i=await e.text();if(i!==``)if(t.headers.get(`Accept`)===`text/csv`)r=i;else if(t.headers.get(`Accept`)&&t.headers.get(`Accept`)?.includes(`application/vnd.pgrst.plan+text`))r=i;else try{r=JSON.parse(i)}catch{if(n={message:i},r=null,t.shouldThrowOnError)throw new p({message:i,details:``,hint:``,code:``})}}let s=t.headers.get(`Prefer`)?.match(/count=(exact|planned|estimated)/),c=e.headers.get(`content-range`)?.split(`/`);if(s&&c&&c.length>1&&(i=parseInt(c[1])),t.isMaybeSingle&&Array.isArray(r))if(r.length>1){if(n={code:`PGRST116`,details:`Results contain ${r.length} rows, application/vnd.pgrst.object+json requires 1 row`,hint:null,message:`JSON object requested, multiple (or no) rows returned`},r=null,i=null,a=406,o=`Not Acceptable`,t.shouldThrowOnError)throw new p(_(_({},n),{},{hint:n.hint??``}))}else r=r.length===1?r[0]:null}else{let i=await e.text();try{n=JSON.parse(i),Array.isArray(n)&&e.status===404&&(r=[],n=null,a=200,o=`OK`)}catch{e.status===404&&i===``?(a=204,o=`No Content`):n={message:i}}if(n&&t.shouldThrowOnError)throw new p(n)}return{success:n===null,error:n,data:r,count:i,status:a,statusText:o}}returns(){return this}overrideTypes(){return this}},ae=class extends ie{throwOnError(){return super.throwOnError()}select(e){let t=!1,n=(e??`*`).split(``).map(e=>/\s/.test(e)&&!t?``:(e===`"`&&(t=!t),e)).join(``);return this.url.searchParams.set(`select`,n),this.headers.append(`Prefer`,`return=representation`),this}order(e,{ascending:t=!0,nullsFirst:n,foreignTable:r,referencedTable:i=r}={}){let a=i?`${i}.order`:`order`,o=this.url.searchParams.get(a);return this.url.searchParams.set(a,`${o?`${o},`:``}${e}.${t?`asc`:`desc`}${n===void 0?``:n?`.nullsfirst`:`.nullslast`}`),this}limit(e,{foreignTable:t,referencedTable:n=t}={}){let r=n===void 0?`limit`:`${n}.limit`;return this.url.searchParams.set(r,`${e}`),this}range(e,t,{foreignTable:n,referencedTable:r=n}={}){let i=r===void 0?`offset`:`${r}.offset`,a=r===void 0?`limit`:`${r}.limit`;return this.url.searchParams.set(i,`${e}`),this.url.searchParams.set(a,`${t-e+1}`),this}abortSignal(e){return this.signal=e,this}single(){return this.headers.set(`Accept`,`application/vnd.pgrst.object+json`),this}maybeSingle(){return this.isMaybeSingle=!0,this}csv(){return this.headers.set(`Accept`,`text/csv`),this}geojson(){return this.headers.set(`Accept`,`application/geo+json`),this}explain({analyze:e=!1,verbose:t=!1,settings:n=!1,buffers:r=!1,wal:i=!1,format:a=`text`}={}){let o=[e?`analyze`:null,t?`verbose`:null,n?`settings`:null,r?`buffers`:null,i?`wal`:null].filter(Boolean).join(`|`),s=this.headers.get(`Accept`)??`application/json`;return this.headers.set(`Accept`,`application/vnd.pgrst.plan+${a}; for="${s}"; options=${o};`),this}rollback(){return this.headers.append(`Prefer`,`tx=rollback`),this}returns(){return this}maxAffected(e){return this.headers.append(`Prefer`,`handling=strict`),this.headers.append(`Prefer`,`max-affected=${e}`),this}};let oe=RegExp(`[,()]`);var se=class extends ae{throwOnError(){return super.throwOnError()}eq(e,t){return this.url.searchParams.append(e,`eq.${t}`),this}neq(e,t){return this.url.searchParams.append(e,`neq.${t}`),this}gt(e,t){return this.url.searchParams.append(e,`gt.${t}`),this}gte(e,t){return this.url.searchParams.append(e,`gte.${t}`),this}lt(e,t){return this.url.searchParams.append(e,`lt.${t}`),this}lte(e,t){return this.url.searchParams.append(e,`lte.${t}`),this}like(e,t){return this.url.searchParams.append(e,`like.${t}`),this}likeAllOf(e,t){return this.url.searchParams.append(e,`like(all).{${t.join(`,`)}}`),this}likeAnyOf(e,t){return this.url.searchParams.append(e,`like(any).{${t.join(`,`)}}`),this}ilike(e,t){return this.url.searchParams.append(e,`ilike.${t}`),this}ilikeAllOf(e,t){return this.url.searchParams.append(e,`ilike(all).{${t.join(`,`)}}`),this}ilikeAnyOf(e,t){return this.url.searchParams.append(e,`ilike(any).{${t.join(`,`)}}`),this}regexMatch(e,t){return this.url.searchParams.append(e,`match.${t}`),this}regexIMatch(e,t){return this.url.searchParams.append(e,`imatch.${t}`),this}is(e,t){return this.url.searchParams.append(e,`is.${t}`),this}isDistinct(e,t){return this.url.searchParams.append(e,`isdistinct.${t}`),this}in(e,t){let n=Array.from(new Set(t)).map(e=>typeof e==`string`&&oe.test(e)?`"${e}"`:`${e}`).join(`,`);return this.url.searchParams.append(e,`in.(${n})`),this}notIn(e,t){let n=Array.from(new Set(t)).map(e=>typeof e==`string`&&oe.test(e)?`"${e}"`:`${e}`).join(`,`);return this.url.searchParams.append(e,`not.in.(${n})`),this}contains(e,t){return typeof t==`string`?this.url.searchParams.append(e,`cs.${t}`):Array.isArray(t)?this.url.searchParams.append(e,`cs.{${t.join(`,`)}}`):this.url.searchParams.append(e,`cs.${JSON.stringify(t)}`),this}containedBy(e,t){return typeof t==`string`?this.url.searchParams.append(e,`cd.${t}`):Array.isArray(t)?this.url.searchParams.append(e,`cd.{${t.join(`,`)}}`):this.url.searchParams.append(e,`cd.${JSON.stringify(t)}`),this}rangeGt(e,t){return this.url.searchParams.append(e,`sr.${t}`),this}rangeGte(e,t){return this.url.searchParams.append(e,`nxl.${t}`),this}rangeLt(e,t){return this.url.searchParams.append(e,`sl.${t}`),this}rangeLte(e,t){return this.url.searchParams.append(e,`nxr.${t}`),this}rangeAdjacent(e,t){return this.url.searchParams.append(e,`adj.${t}`),this}overlaps(e,t){return typeof t==`string`?this.url.searchParams.append(e,`ov.${t}`):this.url.searchParams.append(e,`ov.{${t.join(`,`)}}`),this}textSearch(e,t,{config:n,type:r}={}){let i=``;r===`plain`?i=`pl`:r===`phrase`?i=`ph`:r===`websearch`&&(i=`w`);let a=n===void 0?``:`(${n})`;return this.url.searchParams.append(e,`${i}fts${a}.${t}`),this}match(e){return Object.entries(e).filter(([e,t])=>t!==void 0).forEach(([e,t])=>{this.url.searchParams.append(e,`eq.${t}`)}),this}not(e,t,n){return this.url.searchParams.append(e,`not.${t}.${n}`),this}or(e,{foreignTable:t,referencedTable:n=t}={}){let r=n?`${n}.or`:`or`;return this.url.searchParams.append(r,`(${e})`),this}filter(e,t,n){return this.url.searchParams.append(e,`${t}.${n}`),this}},ce=class{constructor(e,{headers:t={},schema:n,fetch:r,urlLengthLimit:i=8e3,retry:a}){this.url=e,this.headers=new Headers(t),this.schema=n,this.fetch=r,this.urlLengthLimit=i,this.retry=a}cloneRequestState(){return{url:new URL(this.url.toString()),headers:new Headers(this.headers)}}select(e,t){let{head:n=!1,count:r}=t??{},i=n?`HEAD`:`GET`,a=!1,o=(e??`*`).split(``).map(e=>/\s/.test(e)&&!a?``:(e===`"`&&(a=!a),e)).join(``),{url:s,headers:c}=this.cloneRequestState();return s.searchParams.set(`select`,o),r&&c.append(`Prefer`,`count=${r}`),new se({method:i,url:s,headers:c,schema:this.schema,fetch:this.fetch,urlLengthLimit:this.urlLengthLimit,retry:this.retry})}insert(e,{count:t,defaultToNull:n=!0}={}){let{url:r,headers:i}=this.cloneRequestState();if(t&&i.append(`Prefer`,`count=${t}`),n||i.append(`Prefer`,`missing=default`),Array.isArray(e)){let t=e.reduce((e,t)=>e.concat(Object.keys(t)),[]);if(t.length>0){let e=[...new Set(t)].map(e=>`"${e}"`);r.searchParams.set(`columns`,e.join(`,`))}}return new se({method:`POST`,url:r,headers:i,schema:this.schema,body:e,fetch:this.fetch??fetch,urlLengthLimit:this.urlLengthLimit,retry:this.retry})}upsert(e,{onConflict:t,ignoreDuplicates:n=!1,count:r,defaultToNull:i=!0}={}){let{url:a,headers:o}=this.cloneRequestState();if(o.append(`Prefer`,`resolution=${n?`ignore`:`merge`}-duplicates`),t!==void 0&&a.searchParams.set(`on_conflict`,t),r&&o.append(`Prefer`,`count=${r}`),i||o.append(`Prefer`,`missing=default`),Array.isArray(e)){let t=e.reduce((e,t)=>e.concat(Object.keys(t)),[]);if(t.length>0){let e=[...new Set(t)].map(e=>`"${e}"`);a.searchParams.set(`columns`,e.join(`,`))}}return new se({method:`POST`,url:a,headers:o,schema:this.schema,body:e,fetch:this.fetch??fetch,urlLengthLimit:this.urlLengthLimit,retry:this.retry})}update(e,{count:t}={}){let{url:n,headers:r}=this.cloneRequestState();return t&&r.append(`Prefer`,`count=${t}`),new se({method:`PATCH`,url:n,headers:r,schema:this.schema,body:e,fetch:this.fetch??fetch,urlLengthLimit:this.urlLengthLimit,retry:this.retry})}delete({count:e}={}){let{url:t,headers:n}=this.cloneRequestState();return e&&n.append(`Prefer`,`count=${e}`),new se({method:`DELETE`,url:t,headers:n,schema:this.schema,fetch:this.fetch??fetch,urlLengthLimit:this.urlLengthLimit,retry:this.retry})}},le=class e{constructor(e,{headers:t={},schema:n,fetch:r,timeout:i,urlLengthLimit:a=8e3,retry:o}={}){this.url=e,this.headers=new Headers(t),this.schemaName=n,this.urlLengthLimit=a;let s=r??globalThis.fetch;i!==void 0&&i>0?this.fetch=(e,t)=>{let n=new AbortController,r=setTimeout(()=>n.abort(),i),a=t?.signal;if(a){if(a.aborted)return clearTimeout(r),s(e,t);let i=()=>{clearTimeout(r),n.abort()};return a.addEventListener(`abort`,i,{once:!0}),s(e,_(_({},t),{},{signal:n.signal})).finally(()=>{clearTimeout(r),a.removeEventListener(`abort`,i)})}return s(e,_(_({},t),{},{signal:n.signal})).finally(()=>clearTimeout(r))}:this.fetch=s,this.retry=o}from(e){if(!e||typeof e!=`string`||e.trim()===``)throw Error(`Invalid relation name: relation must be a non-empty string.`);return new ce(new URL(`${this.url}/${e}`),{headers:new Headers(this.headers),schema:this.schemaName,fetch:this.fetch,urlLengthLimit:this.urlLengthLimit,retry:this.retry})}schema(t){return new e(this.url,{headers:this.headers,schema:t,fetch:this.fetch,urlLengthLimit:this.urlLengthLimit,retry:this.retry})}rpc(e,t={},{head:n=!1,get:r=!1,count:i}={}){let a,o=new URL(`${this.url}/rpc/${e}`),s,c=e=>typeof e==`object`&&!!e&&(!Array.isArray(e)||e.some(c)),l=n&&Object.values(t).some(c);l?(a=`POST`,s=t):n||r?(a=n?`HEAD`:`GET`,Object.entries(t).filter(([e,t])=>t!==void 0).map(([e,t])=>[e,Array.isArray(t)?`{${t.join(`,`)}}`:`${t}`]).forEach(([e,t])=>{o.searchParams.append(e,t)})):(a=`POST`,s=t);let u=new Headers(this.headers);return l?u.set(`Prefer`,i?`count=${i},return=minimal`:`return=minimal`):i&&u.set(`Prefer`,`count=${i}`),new se({method:a,url:o,headers:u,schema:this.schemaName,body:s,fetch:this.fetch??fetch,urlLengthLimit:this.urlLengthLimit,retry:this.retry})}},ue=class{constructor(){}static detectEnvironment(){if(typeof WebSocket<`u`)return{type:`native`,wsConstructor:WebSocket};let e=globalThis;if(typeof globalThis<`u`&&e.WebSocket!==void 0)return{type:`native`,wsConstructor:e.WebSocket};let t=typeof global<`u`?global:void 0;if(t&&t.WebSocket!==void 0)return{type:`native`,wsConstructor:t.WebSocket};if(typeof globalThis<`u`&&e.WebSocketPair!==void 0&&globalThis.WebSocket===void 0)return{type:`cloudflare`,error:`Cloudflare Workers detected. WebSocket clients are not supported in Cloudflare Workers.`,workaround:`Use Cloudflare Workers WebSocket API for server-side WebSocket handling, or deploy to a different runtime.`};if(typeof globalThis<`u`&&e.EdgeRuntime||typeof navigator<`u`&&navigator.userAgent?.includes(`Vercel-Edge`))return{type:`unsupported`,error:`Edge runtime detected (Vercel Edge/Netlify Edge). WebSockets are not supported in edge functions.`,workaround:`Use serverless functions or a different deployment target for WebSocket functionality.`};let n=globalThis.process;if(n){let e=n.versions;if(e&&e.node)return{type:`unsupported`,error:`Node.js detected but native WebSocket not found.`,workaround:`Ensure you are running Node.js 22+ or provide a WebSocket implementation via the transport option.`}}return{type:`unsupported`,error:`Unknown JavaScript runtime without WebSocket support.`,workaround:`Ensure you're running in a supported environment (browser, Node.js, Deno) or provide a custom WebSocket implementation.`}}static getWebSocketConstructor(){let e=this.detectEnvironment();if(e.wsConstructor)return e.wsConstructor;let t=e.error||`WebSocket not supported in this environment.`;throw e.workaround&&(t+=`\n\nSuggested solution: ${e.workaround}`),Error(t)}static isWebSocketSupported(){try{return this.detectEnvironment().type===`native`}catch{return!1}}};let v={closed:`closed`,errored:`errored`,joined:`joined`,joining:`joining`,leaving:`leaving`},de={close:`phx_close`,error:`phx_error`,join:`phx_join`,reply:`phx_reply`,leave:`phx_leave`,access_token:`access_token`},fe={connecting:`connecting`,open:`open`,closing:`closing`,closed:`closed`};var pe=class{constructor(e){this.HEADER_LENGTH=1,this.USER_BROADCAST_PUSH_META_LENGTH=6,this.KINDS={userBroadcastPush:3,userBroadcast:4},this.BINARY_ENCODING=0,this.JSON_ENCODING=1,this.BROADCAST_EVENT=`broadcast`,this.allowedMetadataKeys=[],this.allowedMetadataKeys=e??[]}encode(e,t){if(e.event===this.BROADCAST_EVENT&&!(e.payload instanceof ArrayBuffer)&&typeof e.payload.event==`string`)return t(this._binaryEncodeUserBroadcastPush(e));let n=[e.join_ref,e.ref,e.topic,e.event,e.payload];return t(JSON.stringify(n))}_binaryEncodeUserBroadcastPush(e){return this._isArrayBuffer(e.payload?.payload)?this._encodeBinaryUserBroadcastPush(e):this._encodeJsonUserBroadcastPush(e)}_encodeBinaryUserBroadcastPush(e){let t=e.payload?.payload??new ArrayBuffer(0);return this._encodeUserBroadcastPush(e,this.BINARY_ENCODING,t)}_encodeJsonUserBroadcastPush(e){let t=e.payload?.payload??{},n=new TextEncoder().encode(JSON.stringify(t)).buffer;return this._encodeUserBroadcastPush(e,this.JSON_ENCODING,n)}_encodeUserBroadcastPush(e,t,n){let r=new TextEncoder,i=r.encode(e.topic),a=r.encode(e.ref??``),o=r.encode(e.join_ref??``),s=r.encode(e.payload.event),c=this.allowedMetadataKeys?this._pick(e.payload,this.allowedMetadataKeys):{},l=r.encode(Object.keys(c).length===0?``:JSON.stringify(c));if(o.length>255)throw Error(`joinRef length ${o.length} exceeds maximum of 255`);if(a.length>255)throw Error(`ref length ${a.length} exceeds maximum of 255`);if(i.length>255)throw Error(`topic length ${i.length} exceeds maximum of 255`);if(s.length>255)throw Error(`userEvent length ${s.length} exceeds maximum of 255`);if(l.length>255)throw Error(`metadata length ${l.length} exceeds maximum of 255`);let u=this.USER_BROADCAST_PUSH_META_LENGTH+o.length+a.length+i.length+s.length+l.length,d=new ArrayBuffer(this.HEADER_LENGTH+u),f=new DataView(d),p=new Uint8Array(d),m=0;f.setUint8(m++,this.KINDS.userBroadcastPush),f.setUint8(m++,o.length),f.setUint8(m++,a.length),f.setUint8(m++,i.length),f.setUint8(m++,s.length),f.setUint8(m++,l.length),f.setUint8(m++,t),p.set(o,m),m+=o.length,p.set(a,m),m+=a.length,p.set(i,m),m+=i.length,p.set(s,m),m+=s.length,p.set(l,m),m+=l.length;var h=new Uint8Array(d.byteLength+n.byteLength);return h.set(new Uint8Array(d),0),h.set(new Uint8Array(n),d.byteLength),h.buffer}decode(e,t){if(this._isArrayBuffer(e))return t(this._binaryDecode(e));if(typeof e==`string`){let[n,r,i,a,o]=JSON.parse(e);return t({join_ref:n,ref:r,topic:i,event:a,payload:o})}return t({})}_binaryDecode(e){let t=new DataView(e),n=t.getUint8(0),r=new TextDecoder;switch(n){case this.KINDS.userBroadcast:return this._decodeUserBroadcast(e,t,r)}}_decodeUserBroadcast(e,t,n){let r=t.getUint8(1),i=t.getUint8(2),a=t.getUint8(3),o=t.getUint8(4),s=this.HEADER_LENGTH+4,c=n.decode(e.slice(s,s+r));s+=r;let l=n.decode(e.slice(s,s+i));s+=i;let u=n.decode(e.slice(s,s+a));s+=a;let d=e.slice(s,e.byteLength),f=o===this.JSON_ENCODING?JSON.parse(n.decode(d)):d,p={type:this.BROADCAST_EVENT,event:l,payload:f};return a>0&&(p.meta=JSON.parse(u)),{join_ref:null,ref:null,topic:c,event:this.BROADCAST_EVENT,payload:p}}_isArrayBuffer(e){return e instanceof ArrayBuffer||e?.constructor?.name===`ArrayBuffer`}_pick(e,t){return!e||typeof e!=`object`?{}:Object.fromEntries(Object.entries(e).filter(([e])=>t.includes(e)))}},y;(function(e){e.abstime=`abstime`,e.bool=`bool`,e.date=`date`,e.daterange=`daterange`,e.float4=`float4`,e.float8=`float8`,e.int2=`int2`,e.int4=`int4`,e.int4range=`int4range`,e.int8=`int8`,e.int8range=`int8range`,e.json=`json`,e.jsonb=`jsonb`,e.money=`money`,e.numeric=`numeric`,e.oid=`oid`,e.reltime=`reltime`,e.text=`text`,e.time=`time`,e.timestamp=`timestamp`,e.timestamptz=`timestamptz`,e.timetz=`timetz`,e.tsrange=`tsrange`,e.tstzrange=`tstzrange`})(y||={});let me=(e,t,n={})=>{let r=n.skipTypes??[];return t?Object.keys(t).reduce((n,i)=>(n[i]=he(i,e,t,r),n),{}):{}},he=(e,t,n,r)=>{let i=t.find(t=>t.name===e)?.type,a=n[e];return i&&!r.includes(i)?ge(i,a):_e(a)},ge=(e,t)=>{if(e.charAt(0)===`_`)return xe(t,e.slice(1,e.length));switch(e){case y.bool:return ve(t);case y.float4:case y.float8:case y.int2:case y.int4:case y.int8:case y.numeric:case y.oid:return ye(t);case y.json:case y.jsonb:return be(t);case y.timestamp:return Se(t);case y.abstime:case y.date:case y.daterange:case y.int4range:case y.int8range:case y.money:case y.reltime:case y.text:case y.time:case y.timestamptz:case y.timetz:case y.tsrange:case y.tstzrange:return _e(t);default:return _e(t)}},_e=e=>e,ve=e=>{switch(e){case`t`:return!0;case`f`:return!1;default:return e}},ye=e=>{if(typeof e==`string`){let t=parseFloat(e);if(!Number.isNaN(t))return t}return e},be=e=>{if(typeof e==`string`)try{return JSON.parse(e)}catch{return e}return e},xe=(e,t)=>{if(typeof e!=`string`)return e;let n=e.length-1,r=e[n];if(e[0]===`{`&&r===`}`){let r,i=e.slice(1,n);try{r=JSON.parse(`[`+i+`]`)}catch{r=i?i.split(`,`):[]}return r.map(e=>ge(t,e))}return e},Se=e=>typeof e==`string`?e.replace(` `,`T`):e,Ce=e=>{let t=new URL(e);return t.protocol=t.protocol.replace(/^ws/i,`http`),t.pathname=t.pathname.replace(/\/+$/,``).replace(/\/socket\/websocket$/i,``).replace(/\/socket$/i,``).replace(/\/websocket$/i,``),t.pathname===``||t.pathname===`/`?t.pathname=`/api/broadcast`:t.pathname+=`/api/broadcast`,t.href};var we=e=>typeof e==`function`?e:function(){return e},Te=typeof self<`u`?self:null,Ee=typeof window<`u`?window:null,b=Te||Ee||globalThis,De=`2.0.0`,Oe=1e4,ke=1e3,Ae=100,x={connecting:0,open:1,closing:2,closed:3},S={closed:`closed`,errored:`errored`,joined:`joined`,joining:`joining`,leaving:`leaving`},C={close:`phx_close`,error:`phx_error`,join:`phx_join`,reply:`phx_reply`,leave:`phx_leave`},je={longpoll:`longpoll`,websocket:`websocket`},Me={complete:4},Ne=`base64url.bearer.phx.`,Pe=class{constructor(e,t,n,r){this.channel=e,this.event=t,this.payload=n||function(){return{}},this.receivedResp=null,this.timeout=r,this.timeoutTimer=null,this.recHooks=[],this.sent=!1,this.ref=void 0}resend(e){this.timeout=e,this.reset(),this.send()}send(){this.hasReceived(`timeout`)||(this.startTimeout(),this.sent=!0,this.channel.socket.push({topic:this.channel.topic,event:this.event,payload:this.payload(),ref:this.ref,join_ref:this.channel.joinRef()}))}receive(e,t){return this.hasReceived(e)&&t(this.receivedResp.response),this.recHooks.push({status:e,callback:t}),this}reset(){this.cancelRefEvent(),this.ref=null,this.refEvent=null,this.receivedResp=null,this.sent=!1}destroy(){this.cancelRefEvent(),this.cancelTimeout()}matchReceive({status:e,response:t,_ref:n}){this.recHooks.filter(t=>t.status===e).forEach(e=>e.callback(t))}cancelRefEvent(){this.refEvent&&this.channel.off(this.refEvent)}cancelTimeout(){clearTimeout(this.timeoutTimer),this.timeoutTimer=null}startTimeout(){this.timeoutTimer&&this.cancelTimeout(),this.ref=this.channel.socket.makeRef(),this.refEvent=this.channel.replyEventName(this.ref),this.channel.on(this.refEvent,e=>{this.cancelRefEvent(),this.cancelTimeout(),this.receivedResp=e,this.matchReceive(e)}),this.timeoutTimer=setTimeout(()=>{this.trigger(`timeout`,{})},this.timeout)}hasReceived(e){return this.receivedResp&&this.receivedResp.status===e}trigger(e,t){this.channel.trigger(this.refEvent,{status:e,response:t})}},Fe=class{constructor(e,t){this.callback=e,this.timerCalc=t,this.timer=void 0,this.tries=0}reset(){this.tries=0,clearTimeout(this.timer)}scheduleTimeout(){clearTimeout(this.timer),this.timer=setTimeout(()=>{this.tries+=1,this.callback()},this.timerCalc(this.tries+1))}},Ie=class{constructor(e,t,n){this.state=S.closed,this.topic=e,this.params=we(t||{}),this.socket=n,this.bindings=[],this.bindingRef=0,this.timeout=this.socket.timeout,this.joinedOnce=!1,this.joinPush=new Pe(this,C.join,this.params,this.timeout),this.pushBuffer=[],this.stateChangeRefs=[],this.rejoinTimer=new Fe(()=>{this.socket.isConnected()&&this.rejoin()},this.socket.rejoinAfterMs),this.stateChangeRefs.push(this.socket.onError(()=>this.rejoinTimer.reset())),this.stateChangeRefs.push(this.socket.onOpen(()=>{this.rejoinTimer.reset(),this.isErrored()&&this.rejoin()})),this.joinPush.receive(`ok`,()=>{this.state=S.joined,this.rejoinTimer.reset(),this.pushBuffer.forEach(e=>e.send()),this.pushBuffer=[]}),this.joinPush.receive(`error`,e=>{this.state=S.errored,this.socket.hasLogger()&&this.socket.log(`channel`,`error ${this.topic}`,e),this.socket.isConnected()&&this.rejoinTimer.scheduleTimeout()}),this.onClose(()=>{this.rejoinTimer.reset(),this.socket.hasLogger()&&this.socket.log(`channel`,`close ${this.topic}`),this.state=S.closed,this.socket.remove(this)}),this.onError(e=>{this.socket.hasLogger()&&this.socket.log(`channel`,`error ${this.topic}`,e),this.isJoining()&&this.joinPush.reset(),this.state=S.errored,this.socket.isConnected()&&this.rejoinTimer.scheduleTimeout()}),this.joinPush.receive(`timeout`,()=>{this.socket.hasLogger()&&this.socket.log(`channel`,`timeout ${this.topic}`,this.joinPush.timeout),new Pe(this,C.leave,we({}),this.timeout).send(),this.state=S.errored,this.joinPush.reset(),this.socket.isConnected()&&this.rejoinTimer.scheduleTimeout()}),this.on(C.reply,(e,t)=>{this.trigger(this.replyEventName(t),e)})}join(e=this.timeout){if(this.joinedOnce)throw Error(`tried to join multiple times. 'join' can only be called a single time per channel instance`);return this.timeout=e,this.joinedOnce=!0,this.rejoin(),this.joinPush}teardown(){this.pushBuffer.forEach(e=>e.destroy()),this.pushBuffer=[],this.rejoinTimer.reset(),this.joinPush.destroy(),this.state=S.closed,this.bindings=[]}onClose(e){this.on(C.close,e)}onError(e){return this.on(C.error,t=>e(t))}on(e,t){let n=this.bindingRef++;return this.bindings.push({event:e,ref:n,callback:t}),n}off(e,t){this.bindings=this.bindings.filter(n=>!(n.event===e&&(t===void 0||t===n.ref)))}canPush(){return this.socket.isConnected()&&this.isJoined()}push(e,t,n=this.timeout){if(t||={},!this.joinedOnce)throw Error(`tried to push '${e}' to '${this.topic}' before joining. Use channel.join() before pushing events`);let r=new Pe(this,e,function(){return t},n);return this.canPush()?r.send():(r.startTimeout(),this.pushBuffer.push(r)),r}leave(e=this.timeout){this.rejoinTimer.reset(),this.joinPush.cancelTimeout(),this.state=S.leaving;let t=()=>{this.socket.hasLogger()&&this.socket.log(`channel`,`leave ${this.topic}`),this.trigger(C.close,`leave`)},n=new Pe(this,C.leave,we({}),e);return n.receive(`ok`,()=>t()).receive(`timeout`,()=>t()),n.send(),this.canPush()||n.trigger(`ok`,{}),n}onMessage(e,t,n){return t}filterBindings(e,t,n){return!0}isMember(e,t,n,r){return this.topic===e?r&&r!==this.joinRef()?(this.socket.hasLogger()&&this.socket.log(`channel`,`dropping outdated message`,{topic:e,event:t,payload:n,joinRef:r}),!1):!0:!1}joinRef(){return this.joinPush.ref}rejoin(e=this.timeout){this.isLeaving()||(this.socket.leaveOpenTopic(this.topic),this.state=S.joining,this.joinPush.resend(e))}trigger(e,t,n,r){let i=this.onMessage(e,t,n,r);if(t&&!i)throw Error(`channel onMessage callbacks must return the payload, modified or unmodified`);let a=this.bindings.filter(r=>r.event===e&&this.filterBindings(r,t,n));for(let e=0;e<a.length;e++)a[e].callback(i,n,r||this.joinRef())}replyEventName(e){return`chan_reply_${e}`}isClosed(){return this.state===S.closed}isErrored(){return this.state===S.errored}isJoined(){return this.state===S.joined}isJoining(){return this.state===S.joining}isLeaving(){return this.state===S.leaving}},Le=class{static request(e,t,n,r,i,a,o){if(b.XDomainRequest){let n=new b.XDomainRequest;return this.xdomainRequest(n,e,t,r,i,a,o)}else if(b.XMLHttpRequest){let s=new b.XMLHttpRequest;return this.xhrRequest(s,e,t,n,r,i,a,o)}else if(b.fetch&&b.AbortController)return this.fetchRequest(e,t,n,r,i,a,o);else throw Error(`No suitable XMLHttpRequest implementation found`)}static fetchRequest(e,t,n,r,i,a,o){let s={method:e,headers:n,body:r},c=null;return i&&(c=new AbortController,setTimeout(()=>c.abort(),i),s.signal=c.signal),b.fetch(t,s).then(e=>e.text()).then(e=>this.parseJSON(e)).then(e=>o&&o(e)).catch(e=>{e.name===`AbortError`&&a?a():o&&o(null)}),c}static xdomainRequest(e,t,n,r,i,a,o){return e.timeout=i,e.open(t,n),e.onload=()=>{let t=this.parseJSON(e.responseText);o&&o(t)},a&&(e.ontimeout=a),e.onprogress=()=>{},e.send(r),e}static xhrRequest(e,t,n,r,i,a,o,s){e.open(t,n,!0),e.timeout=a;for(let[t,n]of Object.entries(r))e.setRequestHeader(t,n);return e.onerror=()=>s&&s(null),e.onreadystatechange=()=>{e.readyState===Me.complete&&s&&s(this.parseJSON(e.responseText))},o&&(e.ontimeout=o),e.send(i),e}static parseJSON(e){if(!e||e===``)return null;try{return JSON.parse(e)}catch{return console&&console.log(`failed to parse JSON response`,e),null}}static serialize(e,t){let n=[];for(var r in e){if(!Object.prototype.hasOwnProperty.call(e,r))continue;let i=t?`${t}[${r}]`:r,a=e[r];typeof a==`object`?n.push(this.serialize(a,i)):n.push(encodeURIComponent(i)+`=`+encodeURIComponent(a))}return n.join(`&`)}static appendParams(e,t){return Object.keys(t).length===0?e:`${e}${e.match(/\?/)?`&`:`?`}${this.serialize(t)}`}},Re=e=>{let t=``,n=new Uint8Array(e),r=n.byteLength;for(let e=0;e<r;e++)t+=String.fromCharCode(n[e]);return btoa(t)},w=class{constructor(e,t){t&&t.length===2&&t[1].startsWith(Ne)&&(this.authToken=atob(t[1].slice(Ne.length))),this.endPoint=null,this.token=null,this.skipHeartbeat=!0,this.reqs=new Set,this.awaitingBatchAck=!1,this.currentBatch=null,this.currentBatchTimer=null,this.batchBuffer=[],this.onopen=function(){},this.onerror=function(){},this.onmessage=function(){},this.onclose=function(){},this.pollEndpoint=this.normalizeEndpoint(e),this.readyState=x.connecting,setTimeout(()=>this.poll(),0)}normalizeEndpoint(e){return e.replace(`ws://`,`http://`).replace(`wss://`,`https://`).replace(RegExp(`(.*)/`+je.websocket),`$1/`+je.longpoll)}endpointURL(){return Le.appendParams(this.pollEndpoint,{token:this.token})}closeAndRetry(e,t,n){this.close(e,t,n),this.readyState=x.connecting}ontimeout(){this.onerror(`timeout`),this.closeAndRetry(1005,`timeout`,!1)}isActive(){return this.readyState===x.open||this.readyState===x.connecting}poll(){let e={Accept:`application/json`};this.authToken&&(e[`X-Phoenix-AuthToken`]=this.authToken),this.ajax(`GET`,e,null,()=>this.ontimeout(),e=>{if(e){var{status:t,token:n,messages:r}=e;if(t===410&&this.token!==null){this.onerror(410),this.closeAndRetry(3410,`session_gone`,!1);return}this.token=n}else t=0;switch(t){case 200:r.forEach(e=>{setTimeout(()=>this.onmessage({data:e}),0)}),this.poll();break;case 204:this.poll();break;case 410:this.readyState=x.open,this.onopen({}),this.poll();break;case 403:this.onerror(403),this.close(1008,`forbidden`,!1);break;case 0:case 500:this.onerror(500),this.closeAndRetry(1011,`internal server error`,500);break;default:throw Error(`unhandled poll status ${t}`)}})}send(e){typeof e!=`string`&&(e=Re(e)),this.currentBatch?this.currentBatch.push(e):this.awaitingBatchAck?this.batchBuffer.push(e):(this.currentBatch=[e],this.currentBatchTimer=setTimeout(()=>{this.batchSend(this.currentBatch),this.currentBatch=null},0))}batchSend(e,t=0){this.awaitingBatchAck=!0;let n=t+Ae,r=e.slice(t,n);this.ajax(`POST`,{"Content-Type":`application/x-ndjson`},r.join(`
@@ -1960,10 +2182,48 @@ async function setConciliacion(codigo, conciliado) {
   if (error) throw error;
 }
 
+// ---------- Base de datos compartida (dataset importado desde Excel) ----------
+// Genérico a propósito: no conoce la forma del "bundle" del dashboard — eso
+// vive en datastore.js. Aquí solo se habla con Supabase.
+async function fetchTable(name) {
+  const { data, error } = await client.from(name).select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+// Reemplaza el contenido completo de una tabla (borra todo, luego inserta en
+// lotes). pkColumn se usa solo para el filtro del DELETE que exige PostgREST;
+// no hace falta que las filas nuevas lo incluyan (las bigserial se autoasignan).
+async function replaceTable(name, pkColumn, rows) {
+  const { error: delError } = await client.from(name).delete().not(pkColumn, 'is', null);
+  if (delError) throw delError;
+  const CHUNK = 1000;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const { error } = await client.from(name).insert(rows.slice(i, i + CHUNK));
+    if (error) throw error;
+  }
+}
+
+async function getDatasetMeta() {
+  const { data, error } = await client.from('dataset_meta').select('*').eq('id', 'current').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function setDatasetMeta(sourceFilename) {
+  const { data: userData } = await client.auth.getUser();
+  const uid = userData && userData.user ? userData.user.id : null;
+  const { error } = await client.from('dataset_meta').upsert({
+    id: 'current', source_filename: sourceFilename, imported_at: new Date().toISOString(), imported_by: uid,
+  });
+  if (error) throw error;
+}
+
 window.CTAuth = {
   signIn, signOut, getSession, getMyProfile, setPassword,
   listProfiles, updateProfileRole, removeProfile,
   loadConciliacionRemote, setConciliacion,
+  fetchTable, replaceTable, getDatasetMeta, setDatasetMeta,
   pendingAuthType: PENDING_AUTH_TYPE,
   cameFromAuthLink: CAME_FROM_AUTH_LINK,
   onAuthStateChange: (cb) => client.auth.onAuthStateChange(cb),
@@ -2000,10 +2260,6 @@ function el(html) {
 function ymLabel(ym) {
   const [y, m] = ym.split('-');
   return MONTH_ABBR[parseInt(m, 10) - 1] + ' ' + y.slice(2);
-}
-function dayToDateStr(dayNum, epoch) {
-  const d = new Date(new Date(epoch + 'T00:00:00Z').getTime() + dayNum * 86400000);
-  return d.toISOString().slice(0, 10);
 }
 function computePartialMonths(bundle) {
   const epoch = bundle.meta.epoch;
@@ -2309,12 +2565,13 @@ function renderCPM(bundle, life) {
   const top = rows.filter(r => r.cpmReal !== null).slice().sort((a, b) => b.metrosTotales - a.metrosTotales).slice(0, 12);
   const items = top.map(r => ({
     label: r.herramienta,
-    value: r.cpmReal,
-    color: r.sobrecostoPct === null ? 'var(--gray2)' : r.sobrecostoPct <= 15 ? 'var(--green)' : r.sobrecostoPct <= 60 ? 'var(--orange)' : 'var(--red)',
-    valueLabel: `$${r.cpmReal.toFixed(2)}/m`,
-    tooltip: `CPM real $${r.cpmReal.toFixed(3)}/m · CPM ideal ${r.cpmIdeal ? '$' + r.cpmIdeal.toFixed(3) + '/m' : '—'} · ${r.n} piezas`,
+    a: r.cpmReal, b: r.cpmIdeal,
+    aValueLabel: `$${r.cpmReal.toFixed(2)}`,
+    bValueLabel: r.cpmIdeal !== null ? `$${r.cpmIdeal.toFixed(2)}` : '—',
+    tooltipA: `$${r.cpmReal.toFixed(3)}/m · ${r.n} piezas`,
+    tooltipB: r.cpmIdeal !== null ? `$${r.cpmIdeal.toFixed(3)}/m` : 'sin precio registrado',
   }));
-  document.getElementById('chartCPM').innerHTML = svgHBarChart(items, { width: containerWidth('chartCPM'), rowH: 26 });
+  document.getElementById('chartCPM').innerHTML = svgHBarChartPaired(items, { width: containerWidth('chartCPM'), rowH: 34, aLabel: 'CPM real', bLabel: 'CPM ideal' });
 }
 
 // ============ CPM mensual comparable (histórico + actual) ============
@@ -2362,9 +2619,10 @@ function renderCPMTrend(bundle, prod) {
   const months = Array.from(monthSet).sort();
   document.getElementById('cpmTrendConclusion').textContent = describeCpmTrend(sartaRows, months);
 
-  const blocks = sartaRows.map(s => {
+  const blocks = sartaRows.map((s, si) => {
     const withData = s.referencias.filter(r => r.months.some(m => m.cpm !== null));
     const missing = s.referencias.filter(r => !r.found);
+    const chartId = `cpmTrendChart_${si}`;
     const thead = `<tr><th>Referencia</th><th>Herramienta</th>${months.map(ym => `<th class="num">${esc(ymLabel(ym))}</th>`).join('')}</tr>`;
     const tbody = withData.map(r => {
       const byYm = new Map(r.months.map(m => [m.ym, m]));
@@ -2387,11 +2645,23 @@ function renderCPMTrend(bundle, prod) {
       : '';
     return `<div class="sarta-block">
       <h4 style="margin:14px 0 6px; font-size:13px;">${esc(s.sarta)}</h4>
+      <div id="${chartId}"></div>
       <div class="table-wrap"><table>${thead}<tbody>${tbody || `<tr><td colspan="${2 + months.length}" class="empty-note">Sin datos.</td></tr>`}</tbody></table></div>
       ${missingNote}
     </div>`;
   }).join('');
   section.innerHTML = blocks;
+
+  sartaRows.forEach((s, si) => {
+    const chartEl = document.getElementById(`cpmTrendChart_${si}`);
+    if (!chartEl) return;
+    const withData = s.referencias.filter(r => r.months.some(m => m.cpm !== null));
+    const series = withData.map(r => {
+      const byYm = new Map(r.months.map(m => [m.ym, m]));
+      return { name: r.herramienta, values: months.map(ym => { const m = byYm.get(ym); return m && m.cpm !== null ? m.cpm : null; }) };
+    });
+    chartEl.innerHTML = svgLineChart(months.map(ymLabel), series, { width: containerWidth(`cpmTrendChart_${si}`), valueFmt: v => '$' + v.toFixed(2) });
+  });
 }
 
 // ============ ganancia / pérdida por herramienta ============
@@ -2631,12 +2901,13 @@ function handleFile(file) {
   if (!file) return;
   showImportStatus('Leyendo ' + file.name + '…', 'info');
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
+    let newBundle;
     try {
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, { type: 'array', cellDates: false });
       const fallbackCatalog = (BUNDLE.catalog && Object.keys(BUNDLE.catalog).length) ? BUNDLE.catalog : DEFAULT_BUNDLE.catalog;
-      const newBundle = buildBundleFromWorkbook(wb, file.name, fallbackCatalog);
+      newBundle = buildBundleFromWorkbook(wb, file.name, fallbackCatalog);
       if (!newBundle.prod.length) throw new Error('El archivo no contiene registros de producción reconocibles.');
       if (!Object.keys(newBundle.catalog || {}).length) newBundle.catalog = fallbackCatalog;
       BUNDLE = newBundle;
@@ -2644,9 +2915,16 @@ function handleFile(file) {
       herrForRefCache.clear();
       populateFilterOptions();
       renderAll();
-      showImportStatus(`Listo: ${fmtNum(newBundle.prod.length)} registros diarios y ${fmtNum(newBundle.life.length)} piezas cargadas desde "${file.name}". Todas las métricas y gráficos se recalcularon.`, 'ok');
+      showImportStatus(`Cargado en tu vista: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}". Guardando para todos los usuarios…`, 'info');
     } catch (err) {
       showImportStatus('No se pudo procesar el archivo: ' + err.message, 'err');
+      return;
+    }
+    try {
+      await publishSharedBundle(newBundle, file.name);
+      showImportStatus(`Listo: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}", guardado y visible para todos los usuarios.`, 'ok');
+    } catch (pubErr) {
+      showImportStatus(`Tu vista se actualizó, pero no se pudo guardar para los demás usuarios (${pubErr.message}). Vuelve a intentarlo.`, 'err');
     }
   };
   reader.onerror = () => showImportStatus('Error leyendo el archivo.', 'err');
@@ -2744,17 +3022,26 @@ async function renderUserMgmt() {
 function updateAuthUI() {
   const badge = document.getElementById('userBadge');
   const usersBtn = document.getElementById('usersBtn');
+  const importBtn = document.getElementById('importBtn');
   if (currentUser) {
     badge.textContent = `${currentUser.email} · ${currentUser.role === 'admin' ? 'Administrador' : 'Visualizador'}`;
     badge.hidden = false;
     usersBtn.hidden = currentUser.role !== 'admin';
+    importBtn.hidden = currentUser.role !== 'admin';
   }
+}
+async function loadSharedBundleIntoApp() {
+  try {
+    const shared = await loadSharedBundle();
+    if (shared) BUNDLE = shared;
+  } catch (e) { /* se queda con el bundle base embebido */ }
 }
 async function enterApp(user) {
   currentUser = user;
   document.body.classList.add('authed');
   updateAuthUI();
   await refreshConciliacion();
+  await loadSharedBundleIntoApp();
   if (currentUser.role === 'admin') renderUserMgmt();
   if (!appInitialized) { appInitialized = true; initApp(); }
   else { populateFilterOptions(); renderAll(); }
@@ -2873,7 +3160,7 @@ document.querySelectorAll('.table-tabs button').forEach(b => b.addEventListener(
   document.getElementById('restoreBtn').addEventListener('click', () => {
     BUNDLE = DEFAULT_BUNDLE; filters = EMPTY_FILTERS();
     herrForRefCache.clear(); populateFilterOptions(); renderAll();
-    showImportStatus('Se restauraron los datos originales del archivo base.', 'info');
+    showImportStatus('Se restauró tu vista al archivo base original. Esto no cambia la base de datos compartida — para eso, importa un Excel.', 'info');
   });
 
   populateFilterOptions();

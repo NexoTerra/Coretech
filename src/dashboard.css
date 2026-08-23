@@ -204,6 +204,9 @@ select{
 .axis-line{stroke:var(--border); stroke-width:1;}
 .ref-line{stroke:var(--text-faint); stroke-width:1; stroke-dasharray:3 3;}
 .empty-note{color:var(--text-faint); font-size:12.5px; padding:20px 0; text-align:center;}
+.chart-legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--text-dim); margin-bottom:6px;}
+.legend-item{display:inline-flex; align-items:center; gap:5px;}
+.legend-dot{width:9px; height:9px; border-radius:2px; display:inline-block; flex:none;}
 
 /* ---- motivo de baja ---- */
 .motivo-card{margin-bottom:16px;}

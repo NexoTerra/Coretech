@@ -85,10 +85,48 @@ async function setConciliacion(codigo, conciliado) {
   if (error) throw error;
 }
 
+// ---------- Base de datos compartida (dataset importado desde Excel) ----------
+// Genérico a propósito: no conoce la forma del "bundle" del dashboard — eso
+// vive en datastore.js. Aquí solo se habla con Supabase.
+async function fetchTable(name) {
+  const { data, error } = await client.from(name).select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+// Reemplaza el contenido completo de una tabla (borra todo, luego inserta en
+// lotes). pkColumn se usa solo para el filtro del DELETE que exige PostgREST;
+// no hace falta que las filas nuevas lo incluyan (las bigserial se autoasignan).
+async function replaceTable(name, pkColumn, rows) {
+  const { error: delError } = await client.from(name).delete().not(pkColumn, 'is', null);
+  if (delError) throw delError;
+  const CHUNK = 1000;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const { error } = await client.from(name).insert(rows.slice(i, i + CHUNK));
+    if (error) throw error;
+  }
+}
+
+async function getDatasetMeta() {
+  const { data, error } = await client.from('dataset_meta').select('*').eq('id', 'current').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function setDatasetMeta(sourceFilename) {
+  const { data: userData } = await client.auth.getUser();
+  const uid = userData && userData.user ? userData.user.id : null;
+  const { error } = await client.from('dataset_meta').upsert({
+    id: 'current', source_filename: sourceFilename, imported_at: new Date().toISOString(), imported_by: uid,
+  });
+  if (error) throw error;
+}
+
 window.CTAuth = {
   signIn, signOut, getSession, getMyProfile, setPassword,
   listProfiles, updateProfileRole, removeProfile,
   loadConciliacionRemote, setConciliacion,
+  fetchTable, replaceTable, getDatasetMeta, setDatasetMeta,
   pendingAuthType: PENDING_AUTH_TYPE,
   cameFromAuthLink: CAME_FROM_AUTH_LINK,
   onAuthStateChange: (cb) => client.auth.onAuthStateChange(cb),

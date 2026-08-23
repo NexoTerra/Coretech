@@ -79,14 +79,15 @@ __CSS__
       (<b>AMS_Diario</b> / <b>BD_Aceros</b> / <b>Referencia</b>, o el maestro original <b>NUEVO AMS BD
       RENDIMIENTOS</b> / <b>BD CONSECUTIVOS ACEROS</b> / <b>RENDIMIENTOS</b>). El precio unitario y el metro
       garantizado se toman del catálogo ya cargado cuando el archivo nuevo no trae su propia hoja de referencia.
-      El procesamiento ocurre en tu navegador — el archivo no se envía a ningún servidor.
+      El archivo se procesa en tu navegador y luego se guarda en la base de datos compartida, para que todos los
+      usuarios (en cualquier dispositivo) vean la misma información sin tener que volver a importar.
     </p>
     <div class="dropzone" id="dropzone">
       Arrastra aquí el archivo .xlsx, o
       <button class="small primary" id="browseBtn" type="button">elegir archivo…</button>
       <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
     </div>
-    <button class="small" id="restoreBtn" type="button">↺ Restaurar datos originales</button>
+    <button class="small" id="restoreBtn" type="button">↺ Restaurar vista al archivo base</button>
     <div class="import-status" id="importStatus" style="display:none;"></div>
   </section>
 
@@ -220,10 +221,10 @@ __CSS__
     <h3>CPM — Costo por metro</h3>
     <p class="chart-sub">
       CPM real = precio unitario de la herramienta / metros que realmente logra en promedio. CPM ideal = precio
-      unitario / metro garantizado. Convención heredada de la hoja CPM de Marmato.
+      unitario / metro garantizado.
     </p>
     <div class="kpirow" id="cpmKpiRow"></div>
-    <h4 style="margin:18px 0 4px; font-size:13px;">CPM real por herramienta (top 12 por metros perforados)</h4>
+    <h4 style="margin:18px 0 4px; font-size:13px;">CPM real vs. CPM ideal por herramienta (top 12 por metros perforados)</h4>
     <div id="chartCPM"></div>
   </section>
 
@@ -329,8 +330,9 @@ __CSS__
           "parcial" en los gráficos para no confundirlos con una caída real de producción.</dd>
       </dl>
       <p class="methodology-note">
-        Las cifras se recalculan sobre los filtros activos en cada momento. La conciliación y los usuarios que
-        agregues se guardan solo en este navegador hasta que exista una base de datos compartida.
+        Las cifras se recalculan sobre los filtros activos en cada momento. Los datos importados, la conciliación
+        y los usuarios se guardan en una base de datos compartida — cualquier persona con acceso ve la misma
+        información, sin importar el dispositivo desde el que entre.
         Paleta de datos y tipografía de títulos según el Manual de Marca CORE TECH 2026.
       </p>
     </div>
@@ -342,6 +344,7 @@ __CSS__
 <script>__XLSX_LIB__</script>
 <script>__AGG_JS__</script>
 <script>__IMPORTER_JS__</script>
+<script>__DATASTORE_JS__</script>
 <script>__CHARTS_JS__</script>
 <script>__SUPABASE_JS__</script>
 <script>__AUTH_JS__</script>

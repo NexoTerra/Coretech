@@ -556,5 +556,5 @@ function buildBundleFromWorkbook(workbook, sourceName, fallbackCatalog) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildBundleFromWorkbook, buildBundleFromWideFormat, buildBundleFromLongFormat, findSheet, normHeader };
+  module.exports = { buildBundleFromWorkbook, buildBundleFromWideFormat, buildBundleFromLongFormat, findSheet, normHeader, Dict_ };
 }
