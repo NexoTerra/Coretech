@@ -48,19 +48,24 @@ async function getMyProfile() {
   const { data: userData } = await client.auth.getUser();
   const user = userData && userData.user;
   if (!user) return null;
-  const { data, error } = await client.from('profiles').select('id,email,role').eq('id', user.id).maybeSingle();
+  const { data, error } = await client.from('profiles').select('id,email,role,allowed_mines').eq('id', user.id).maybeSingle();
   if (error || !data) return null;
   return data;
 }
 
 async function listProfiles() {
-  const { data, error } = await client.from('profiles').select('id,email,role,created_at').order('created_at', { ascending: true });
+  const { data, error } = await client.from('profiles').select('id,email,role,allowed_mines,created_at').order('created_at', { ascending: true });
   if (error) throw error;
   return data || [];
 }
 
 async function updateProfileRole(id, role) {
   const { error } = await client.from('profiles').update({ role }).eq('id', id);
+  if (error) throw error;
+}
+
+async function updateProfileMines(id, mines) {
+  const { error } = await client.from('profiles').update({ allowed_mines: mines }).eq('id', id);
   if (error) throw error;
 }
 
@@ -124,7 +129,7 @@ async function setDatasetMeta(sourceFilename) {
 
 window.CTAuth = {
   signIn, signOut, getSession, getMyProfile, setPassword,
-  listProfiles, updateProfileRole, removeProfile,
+  listProfiles, updateProfileRole, updateProfileMines, removeProfile,
   loadConciliacionRemote, setConciliacion,
   fetchTable, replaceTable, getDatasetMeta, setDatasetMeta,
   pendingAuthType: PENDING_AUTH_TYPE,

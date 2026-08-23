@@ -3,7 +3,21 @@
 
 const MONTH_ABBR = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
 
-let DEFAULT_BUNDLE = window.__DATA_BUNDLE__;
+const MINES = [
+  { slug: 'segovia', label: 'Aris Mining Segovia', sub: 'Sandra K · El Silencio · Providencia', icon: '⛏️' },
+  { slug: 'marmato', label: 'Aris Mining Marmato', sub: 'Aún sin datos importados', icon: '⛏️' },
+];
+function emptyBundle() {
+  return {
+    meta: { epoch: '2020-01-01', generated: '', source: '' },
+    dict: { mina: [], tipo: [], equipo: [], ref: [], herr: [], estado: [], causa: [], falla: [] },
+    catalog: {}, prod: [], life: [], sartas: {},
+  };
+}
+const MINE_DEFAULT_BUNDLES = { segovia: window.__DATA_BUNDLE__, marmato: emptyBundle() };
+
+let currentMine = null;
+let DEFAULT_BUNDLE = MINE_DEFAULT_BUNDLES.segovia;
 let BUNDLE = DEFAULT_BUNDLE;
 const EMPTY_FILTERS = () => ({ mina: [], tipo: [], equipo: [], ref: [], estado: [], sarta: [], months: [], dateFrom: null, dateTo: null });
 let filters = EMPTY_FILTERS();
@@ -12,6 +26,9 @@ const PAGE_SIZE = 20;
 let currentUser = null;
 let appInitialized = false;
 let conciliacionCache = {};
+function canSeeMine(slug) {
+  return currentUser && (currentUser.role === 'admin' || (currentUser.allowed_mines || []).includes(slug));
+}
 
 function containerWidth(id, fallback) {
   const elx = document.getElementById(id);
@@ -730,6 +747,10 @@ function handleFile(file) {
       herrForRefCache.clear();
       populateFilterOptions();
       renderAll();
+      if (currentMine !== 'segovia') {
+        showImportStatus(`Cargado: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}". La base de datos compartida para esta mina aún no está lista, así que por ahora esto solo se ve en tu navegador.`, 'ok');
+        return;
+      }
       showImportStatus(`Cargado en tu vista: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}". Guardando para todos los usuarios…`, 'info');
     } catch (err) {
       showImportStatus('No se pudo procesar el archivo: ' + err.message, 'err');
@@ -797,12 +818,16 @@ async function renderUserMgmt() {
   listEl.innerHTML = '';
   profiles.forEach(p => {
     const isSelf = currentUser && p.id === currentUser.id;
+    const minesHtml = p.role === 'admin'
+      ? '<span class="mine-checks"><span class="admin-note">ve todas las minas</span></span>'
+      : `<span class="mine-checks">${MINES.map(m => `<label><input type="checkbox" data-mine="${esc(m.slug)}" ${(p.allowed_mines || []).includes(m.slug) ? 'checked' : ''}> ${esc(m.label.replace('Aris Mining ', ''))}</label>`).join('')}</span>`;
     const row = el(`<div class="user-row">
       <span class="user-email">${esc(p.email)}</span>
       <select data-id="${esc(p.id)}">
         <option value="viewer" ${p.role === 'viewer' ? 'selected' : ''}>Visualizador</option>
         <option value="admin" ${p.role === 'admin' ? 'selected' : ''}>Administrador</option>
       </select>
+      ${minesHtml}
       <button class="small ghost" type="button" ${isSelf ? 'disabled title="No puedes revocar tu propio acceso"' : ''}>Revocar</button>
     </div>`);
     const status = document.getElementById('userAddStatus');
@@ -813,11 +838,30 @@ async function renderUserMgmt() {
         status.textContent = `Rol de ${p.email} actualizado a ${select.value === 'admin' ? 'Administrador' : 'Visualizador'}.`;
         status.className = 'import-status ok'; status.style.display = 'block';
         if (isSelf) { currentUser.role = select.value; updateAuthUI(); }
+        renderUserMgmt();
       } catch (err) {
         select.value = p.role;
         status.textContent = 'No se pudo actualizar el rol (' + err.message + ').';
         status.className = 'import-status err'; status.style.display = 'block';
       }
+    });
+    row.querySelectorAll('input[type="checkbox"][data-mine]').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const current = new Set(p.allowed_mines || []);
+        if (cb.checked) current.add(cb.dataset.mine); else current.delete(cb.dataset.mine);
+        const mines = Array.from(current);
+        try {
+          await CTAuth.updateProfileMines(p.id, mines);
+          p.allowed_mines = mines;
+          status.textContent = `Acceso de ${p.email} actualizado.`;
+          status.className = 'import-status ok'; status.style.display = 'block';
+          if (isSelf) { currentUser.allowed_mines = mines; }
+        } catch (err) {
+          cb.checked = !cb.checked;
+          status.textContent = 'No se pudo actualizar el acceso (' + err.message + ').';
+          status.className = 'import-status err'; status.style.display = 'block';
+        }
+      });
     });
     const delBtn = row.querySelector('button');
     if (!isSelf) delBtn.addEventListener('click', async () => {
@@ -835,15 +879,12 @@ async function renderUserMgmt() {
 
 // ============ autenticación (real — Supabase Auth, ver auth.js) ============
 function updateAuthUI() {
+  if (!currentUser) return;
+  const label = `${currentUser.email} · ${currentUser.role === 'admin' ? 'Administrador' : 'Visualizador'}`;
   const badge = document.getElementById('userBadge');
-  const usersBtn = document.getElementById('usersBtn');
-  const importBtn = document.getElementById('importBtn');
-  if (currentUser) {
-    badge.textContent = `${currentUser.email} · ${currentUser.role === 'admin' ? 'Administrador' : 'Visualizador'}`;
-    badge.hidden = false;
-    usersBtn.hidden = currentUser.role !== 'admin';
-    importBtn.hidden = currentUser.role !== 'admin';
-  }
+  badge.textContent = label; badge.hidden = false;
+  document.getElementById('hubUserBadge').textContent = label;
+  document.getElementById('importBtn').hidden = currentUser.role !== 'admin';
 }
 async function loadSharedBundleIntoApp() {
   try {
@@ -851,15 +892,72 @@ async function loadSharedBundleIntoApp() {
     if (shared) BUNDLE = shared;
   } catch (e) { /* se queda con el bundle base embebido */ }
 }
-async function enterApp(user) {
+function showScreen(name) {
+  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users');
+  document.body.classList.add('screen-' + name);
+}
+function mineInfo(slug) {
+  return MINES.find(m => m.slug === slug) || { label: slug, sub: '' };
+}
+function renderHub() {
+  const grid = document.getElementById('hubGrid');
+  grid.innerHTML = '';
+  MINES.forEach(m => {
+    if (!canSeeMine(m.slug)) return;
+    const card = el(`<button type="button" class="hub-card">
+      <span class="hub-card-icon">${m.icon}</span>
+      <span class="hub-card-title">${esc(m.label)}</span>
+      <span class="hub-card-sub">${esc(m.sub)}</span>
+    </button>`);
+    card.addEventListener('click', () => enterMine(m.slug));
+    grid.appendChild(card);
+  });
+  if (currentUser.role === 'admin') {
+    const card = el(`<button type="button" class="hub-card">
+      <span class="hub-card-icon">👤</span>
+      <span class="hub-card-title">Gestión de usuarios</span>
+      <span class="hub-card-sub">Roles y acceso por mina</span>
+    </button>`);
+    card.addEventListener('click', enterUsersScreen);
+    grid.appendChild(card);
+  }
+  if (!grid.children.length) {
+    grid.innerHTML = '<div class="hub-empty">No tienes acceso a ningún módulo todavía. Pide a un administrador que te asigne acceso.</div>';
+  }
+}
+async function enterHub(user) {
   currentUser = user;
   document.body.classList.add('authed');
   updateAuthUI();
+  renderHub();
+  showScreen('hub');
+}
+async function enterMine(slug) {
+  currentMine = slug;
+  const info = mineInfo(slug);
+  document.title = 'CORE TECH · ' + info.label;
+  document.getElementById('subtitle').textContent = `${info.label} — ${info.sub}`;
+  DEFAULT_BUNDLE = MINE_DEFAULT_BUNDLES[slug] || emptyBundle();
+  BUNDLE = DEFAULT_BUNDLE;
+  filters = EMPTY_FILTERS();
+  herrForRefCache.clear();
   await refreshConciliacion();
-  await loadSharedBundleIntoApp();
-  if (currentUser.role === 'admin') renderUserMgmt();
+  // La base de datos compartida todavía es una sola (sin separar por mina);
+  // hasta que se estructure por mina, solo Segovia se sincroniza con ella.
+  if (slug === 'segovia') await loadSharedBundleIntoApp();
+  showScreen('app');
   if (!appInitialized) { appInitialized = true; initApp(); }
   else { populateFilterOptions(); renderAll(); }
+}
+function backToHub() {
+  currentMine = null;
+  document.title = 'CORE TECH · Desempeño de Aceros de Perforación';
+  renderHub();
+  showScreen('hub');
+}
+async function enterUsersScreen() {
+  showScreen('users');
+  await renderUserMgmt();
 }
 async function handleLoginSubmit(e) {
   e.preventDefault();
@@ -878,7 +976,7 @@ async function handleLoginSubmit(e) {
       errorEl.style.display = 'block';
       return;
     }
-    await enterApp(profile);
+    await enterHub(profile);
   } catch (err) {
     errorEl.textContent = /invalid/i.test(err.message) ? 'Correo o contraseña incorrectos.' : ('No se pudo iniciar sesión (' + err.message + ').');
     errorEl.style.display = 'block';
@@ -901,7 +999,7 @@ async function handleSetPasswordSubmit(e) {
       errorEl.style.display = 'block';
       return;
     }
-    await enterApp(profile);
+    await enterHub(profile);
   } catch (err) {
     errorEl.textContent = 'No se pudo guardar la contraseña (' + err.message + ').';
     errorEl.style.display = 'block';
@@ -912,7 +1010,8 @@ async function handleSetPasswordSubmit(e) {
 async function handleLogout() {
   await CTAuth.signOut();
   currentUser = null;
-  document.body.classList.remove('authed');
+  currentMine = null;
+  document.body.classList.remove('authed', 'screen-hub', 'screen-app', 'screen-users');
   document.getElementById('loginPassword').value = '';
 }
 async function restoreSession() {
@@ -921,18 +1020,16 @@ async function restoreSession() {
     if (!session) return;
     const profile = await CTAuth.getMyProfile();
     if (!profile) { await CTAuth.signOut(); return; }
-    await enterApp(profile);
+    await enterHub(profile);
   } catch (e) { /* se queda en la pantalla de inicio */ }
 }
 function initAuth() {
   document.getElementById('loginForm').addEventListener('submit', handleLoginSubmit);
   document.getElementById('setPasswordForm').addEventListener('submit', handleSetPasswordSubmit);
   document.getElementById('logoutBtn').addEventListener('click', handleLogout);
-  document.getElementById('usersBtn').addEventListener('click', () => {
-    const card = document.getElementById('usersCard');
-    card.hidden = !card.hidden;
-    if (!card.hidden) { renderUserMgmt(); card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-  });
+  document.getElementById('hubLogoutBtn').addEventListener('click', handleLogout);
+  document.getElementById('appBackBtn').addEventListener('click', backToHub);
+  document.getElementById('usersBackBtn').addEventListener('click', backToHub);
 
   if (CTAuth.cameFromAuthLink) {
     document.getElementById('loginPanel').hidden = true;

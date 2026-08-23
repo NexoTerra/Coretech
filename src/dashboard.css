@@ -40,8 +40,11 @@ body{
 #app{max-width:1400px;margin:0 auto;padding:20px 24px 60px;}
 
 /* ---- login gate ---- */
-body:not(.authed) #app{display:none;}
 body.authed #loginScreen{display:none;}
+#app, #hubScreen, #usersScreen{display:none;}
+body.screen-hub #hubScreen{display:flex;}
+body.screen-app #app{display:block;}
+body.screen-users #usersScreen{display:block;}
 #loginScreen{
   min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
 }
@@ -68,18 +71,51 @@ body.authed #loginScreen{display:none;}
 .login-error{background:rgba(214,69,69,.12); color:var(--red); font-size:12.5px; padding:9px 11px; border-radius:8px; margin-top:12px;}
 .login-note{font-size:11px; color:var(--text-faint); margin:18px 0 0;}
 
+/* ---- hub (selector de módulo) ---- */
+#hubScreen{min-height:100vh; align-items:center; justify-content:center; padding:24px;}
+.hub-wrap{width:100%; max-width:760px; text-align:center;}
+.hub-logo{height:40px; width:auto; margin:0 auto 26px; display:block;}
+.hub-logo.logo-dark{display:none;}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .hub-logo.logo-light{display:none;}
+  :root:not([data-theme="light"]) .hub-logo.logo-dark{display:block;}
+}
+:root[data-theme="dark"] .hub-logo.logo-light{display:none;}
+:root[data-theme="dark"] .hub-logo.logo-dark{display:block;}
+.hub-title{font-family:var(--font-title); font-size:16px; letter-spacing:.03em; margin:0 0 22px; color:var(--text);}
+.hub-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px;}
+.hub-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:26px 18px; cursor:pointer; text-align:center;
+  color:var(--text); font-family:var(--font-body); transition:transform .12s ease, border-color .12s ease;
+}
+.hub-card:hover{border-color:var(--cyan2); transform:translateY(-2px);}
+.hub-card .hub-card-icon{font-size:26px; display:block; margin-bottom:10px;}
+.hub-card .hub-card-title{font-size:14px; font-weight:700;}
+.hub-card .hub-card-sub{font-size:11.5px; color:var(--text-faint); margin-top:4px;}
+.hub-empty{color:var(--text-faint); font-size:13px; padding:20px 0;}
+.hub-topbar{display:flex; justify-content:flex-end; gap:8px; margin-bottom:18px;}
+
+/* ---- pantalla de usuarios (módulo completo) ---- */
+.screen-header{display:flex; align-items:center; justify-content:space-between; gap:12px; max-width:1400px; margin:0 auto 18px; padding:20px 24px 0;}
+.screen-header h1{margin:0;}
+#usersScreen .card{max-width:1400px; margin:0 auto; margin-bottom:24px;}
+
 /* ---- user badge / management ---- */
 .user-badge{font-size:12px; color:var(--text-dim); padding:0 4px; white-space:nowrap;}
 .user-list{display:flex; flex-direction:column; gap:6px; margin:14px 0;}
 .user-row{
   display:flex; align-items:center; gap:12px; padding:9px 12px; border:1px solid var(--border);
-  border-radius:9px; background:var(--surface-2);
+  border-radius:9px; background:var(--surface-2); flex-wrap:wrap;
 }
-.user-row .user-email{flex:1; font-size:13px; word-break:break-all;}
+.user-row .user-email{flex:1 1 200px; font-size:13px; word-break:break-all;}
 .user-row select{
   padding:6px 8px; border-radius:8px; border:1px solid var(--border); background:var(--surface);
   color:var(--text); font-size:12.5px; font-family:var(--font-body);
 }
+.mine-checks{display:flex; gap:10px; align-items:center; font-size:11.5px; color:var(--text-dim);}
+.mine-checks label{display:inline-flex; align-items:center; gap:4px; cursor:pointer;}
+.mine-checks .admin-note{font-style:italic; color:var(--text-faint);}
 
 .card{
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);

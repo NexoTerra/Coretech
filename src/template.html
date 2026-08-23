@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CORE TECH · Desempeño de Aceros de Perforación — Aris Mining Segovia</title>
+<title>CORE TECH · Desempeño de Aceros de Perforación</title>
 <style>
 __CSS__
 </style>
@@ -14,7 +14,7 @@ __CSS__
   <div class="login-card" id="loginPanel">
     <img class="logo login-logo logo-light" src="data:image/png;base64,__LOGO_NAVY__" alt="CORE TECH">
     <img class="logo login-logo logo-dark" src="data:image/png;base64,__LOGO_WHITE__" alt="CORE TECH">
-    <p class="login-subtitle">Desempeño de Aceros de Perforación — Aris Mining Segovia</p>
+    <p class="login-subtitle">Panel de Desempeño de Aceros de Perforación</p>
     <form id="loginForm">
       <label for="loginEmail">Correo</label>
       <input type="email" id="loginEmail" autocomplete="username" required placeholder="nombre@correo.com">
@@ -38,6 +38,37 @@ __CSS__
   </div>
 </div>
 
+<div id="hubScreen">
+  <div class="hub-wrap">
+    <div class="hub-topbar">
+      <span class="user-badge" id="hubUserBadge"></span>
+      <button id="hubLogoutBtn" class="ghost">Cerrar sesión</button>
+    </div>
+    <img class="logo hub-logo logo-light" src="data:image/png;base64,__LOGO_NAVY__" alt="CORE TECH">
+    <img class="logo hub-logo logo-dark" src="data:image/png;base64,__LOGO_WHITE__" alt="CORE TECH">
+    <h2 class="hub-title">Selecciona un módulo</h2>
+    <div class="hub-grid" id="hubGrid"></div>
+  </div>
+</div>
+
+<div id="usersScreen">
+  <div class="screen-header">
+    <h1>Gestión de usuarios</h1>
+    <button id="usersBackBtn" class="ghost">← Volver al panel</button>
+  </div>
+  <section class="card">
+    <p class="chart-sub">
+      El acceso es solo por invitación: un administrador invita a cada persona desde el panel de Supabase
+      (Authentication → Users → Invite user); al aceptar la invitación, la persona crea su propia contraseña
+      — CORE TECH nunca la ve ni la guarda. Aquí, como Administrador, puedes asignar el rol Administrador o
+      Visualizador a cada cuenta, revocar el acceso de alguien, y elegir a qué minas puede entrar cada
+      Visualizador (los Administradores siempre ven todas).
+    </p>
+    <div id="userList" class="user-list"></div>
+    <div class="import-status" id="userAddStatus" style="display:none;"></div>
+  </section>
+</div>
+
 <div id="app">
 
   <header class="topbar">
@@ -51,24 +82,12 @@ __CSS__
     </div>
     <div class="topbar-actions">
       <span class="user-badge" id="userBadge" hidden></span>
-      <button id="usersBtn" class="ghost" hidden>👤 Usuarios</button>
+      <button id="appBackBtn" class="ghost">← Módulos</button>
       <button id="importBtn">⇪ Importar Excel</button>
       <button id="themeToggle" class="ghost">🌓 Auto</button>
       <button id="logoutBtn" class="ghost">Cerrar sesión</button>
     </div>
   </header>
-
-  <section class="card" id="usersCard" hidden>
-    <h3>Gestión de usuarios</h3>
-    <p class="chart-sub">
-      El acceso es solo por invitación: un administrador invita a cada persona desde el panel de Supabase
-      (Authentication → Users → Invite user); al aceptar la invitación, la persona crea su propia contraseña
-      — CORE TECH nunca la ve ni la guarda. Aquí, como Administrador, puedes asignar el rol Administrador o
-      Visualizador a cada cuenta, y revocar el acceso de alguien.
-    </p>
-    <div id="userList" class="user-list"></div>
-    <div class="import-status" id="userAddStatus" style="display:none;"></div>
-  </section>
 
   <section class="card import-card" id="importCard" hidden>
     <h3>Importar nueva base de datos</h3>
