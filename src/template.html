@@ -76,12 +76,13 @@ __CSS__
       <img class="logo logo-light" src="data:image/png;base64,__LOGO_NAVY__" alt="CORE TECH" id="logoImgLight">
       <img class="logo logo-dark" src="data:image/png;base64,__LOGO_WHITE__" alt="CORE TECH" id="logoImgDark">
       <div>
-        <h1>Desempeño de Aceros de Perforación</h1>
+        <h1>Desempeño de Aceros de Perforación <span class="mode-badge" id="presentationBadge" hidden>📊 Presentación</span></h1>
         <p class="subtitle" id="subtitle">Aris Mining Segovia — Sandra K · El Silencio · Providencia</p>
       </div>
     </div>
     <div class="topbar-actions">
       <span class="user-badge" id="userBadge" hidden></span>
+      <select id="presentationMineSelect" hidden></select>
       <button id="appBackBtn" class="ghost">← Módulos</button>
       <button id="importBtn">⇪ Importar Excel</button>
       <button id="themeToggle" class="ghost">🌓 Auto</button>
@@ -113,15 +114,33 @@ __CSS__
   <section class="filterbar">
     <div class="filter-group">
       <label>Mina</label>
-      <div class="chipset" id="minaChips"></div>
+      <div class="dropdown">
+        <button class="dropdown-btn" id="minaBtn" type="button"><span class="dd-label">Mina</span> ▾</button>
+        <div class="dropdown-panel" id="minaPanel" style="display:none;">
+          <input type="search" id="minaSearch" placeholder="Buscar mina…">
+          <div id="minaList"></div>
+        </div>
+      </div>
     </div>
     <div class="filter-group">
       <label>Tipo de perforación</label>
-      <div class="chipset" id="tipoChips"></div>
+      <div class="dropdown">
+        <button class="dropdown-btn" id="tipoBtn" type="button"><span class="dd-label">Tipo de perforación</span> ▾</button>
+        <div class="dropdown-panel" id="tipoPanel" style="display:none;">
+          <input type="search" id="tipoSearch" placeholder="Buscar tipo…">
+          <div id="tipoList"></div>
+        </div>
+      </div>
     </div>
     <div class="filter-group">
       <label>Estado</label>
-      <div class="chipset" id="estadoChips"></div>
+      <div class="dropdown">
+        <button class="dropdown-btn" id="estadoBtn" type="button"><span class="dd-label">Estado</span> ▾</button>
+        <div class="dropdown-panel" id="estadoPanel" style="display:none;">
+          <input type="search" id="estadoSearch" placeholder="Buscar estado…">
+          <div id="estadoList"></div>
+        </div>
+      </div>
     </div>
     <div class="filter-group">
       <label>Equipo / Jumbo</label>
@@ -135,7 +154,13 @@ __CSS__
     </div>
     <div class="filter-group" id="sartaFilterGroup">
       <label>Sarta</label>
-      <div class="chipset" id="sartaChips"></div>
+      <div class="dropdown">
+        <button class="dropdown-btn" id="sartaBtn" type="button"><span class="dd-label">Sarta</span> ▾</button>
+        <div class="dropdown-panel" id="sartaPanel" style="display:none;">
+          <input type="search" id="sartaSearch" placeholder="Buscar sarta…">
+          <div id="sartaList"></div>
+        </div>
+      </div>
     </div>
     <div class="filter-group">
       <label>Herramienta / Referencia</label>
@@ -240,7 +265,7 @@ __CSS__
     </div>
   </section>
 
-  <section class="card">
+  <section class="card presentation-hide">
     <h3>CPM — Costo por metro</h3>
     <p class="chart-sub">
       CPM real = precio unitario de la herramienta / metros que realmente logra en promedio. CPM ideal = precio
@@ -251,13 +276,13 @@ __CSS__
     <div id="chartCPM"></div>
   </section>
 
-  <section class="card">
+  <section class="card presentation-hide">
     <h3>CPM mensual por sarta</h3>
     <p class="chart-sub" id="cpmTrendConclusion"></p>
     <div id="cpmTrendSection"></div>
   </section>
 
-  <section class="card">
+  <section class="card presentation-hide">
     <h3>Ganancia / pérdida por herramienta</h3>
     <p class="chart-sub">
       Por cada pieza por debajo del 85% del metro ideal se calcula lo que el cliente pierde (metros que faltaron
@@ -268,7 +293,7 @@ __CSS__
     <div class="table-wrap"><table id="gpTable"></table></div>
   </section>
 
-  <section class="card table-card">
+  <section class="card table-card presentation-hide">
     <div class="table-tabs">
       <button data-tab="herramienta" class="active" type="button">Por herramienta</button>
       <button data-tab="pieza" type="button">Detalle por código de marcado</button>

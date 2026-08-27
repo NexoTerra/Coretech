@@ -17,6 +17,7 @@ function emptyBundle() {
 const MINE_DEFAULT_BUNDLES = { segovia: window.__DATA_BUNDLE__, marmato: emptyBundle() };
 
 let currentMine = null;
+let presentationMode = false;
 let DEFAULT_BUNDLE = MINE_DEFAULT_BUNDLES.segovia;
 let BUNDLE = DEFAULT_BUNDLE;
 const EMPTY_FILTERS = () => ({ mina: [], tipo: [], equipo: [], ref: [], estado: [], sarta: [], months: [], dateFrom: null, dateTo: null });
@@ -61,22 +62,6 @@ function computePartialMonths(bundle) {
 }
 
 // ============ filter UI ============
-function chipSet(containerId, options, filterKey) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = '';
-  options.forEach(opt => {
-    const b = el(`<button type="button" class="chip">${esc(opt)}</button>`);
-    b.addEventListener('click', () => {
-      const arr = filters[filterKey];
-      const idx = arr.indexOf(opt);
-      if (idx >= 0) arr.splice(idx, 1); else arr.push(opt);
-      b.classList.toggle('active');
-      renderAll();
-    });
-    container.appendChild(b);
-  });
-}
-
 // Called every time populateFilterOptions() runs (init, clearFilters, import,
 // restore) with a fresh `options` list, but the underlying DOM elements
 // (button/panel/search box) persist across calls. Click listeners must only
@@ -112,6 +97,7 @@ function searchDropdown(btnId, panelId, searchId, listId, options, filterKey, la
           filters.dateFrom = null; filters.dateTo = null;
           document.getElementById('dateFrom').value = ''; document.getElementById('dateTo').value = '';
         }
+        if (panel._ddOpts.onChange) panel._ddOpts.onChange();
         updateBtnLabel();
         renderAll();
       });
@@ -156,38 +142,25 @@ function applySartaSelectionToRef() {
   const refPanel = document.getElementById('refPanel');
   if (refPanel && refPanel._ddRefresh) refPanel._ddRefresh();
 }
-function sartaChipSet() {
-  const group = document.getElementById('sartaFilterGroup');
-  const container = document.getElementById('sartaChips');
-  const sartaNames = Object.keys(BUNDLE.sartas || {}).sort();
-  group.hidden = !sartaNames.length;
-  container.innerHTML = '';
-  sartaNames.forEach(nombre => {
-    const b = el(`<button type="button" class="chip">${esc(nombre)}</button>`);
-    if (filters.sarta.includes(nombre)) b.classList.add('active');
-    b.addEventListener('click', () => {
-      const idx = filters.sarta.indexOf(nombre);
-      if (idx >= 0) filters.sarta.splice(idx, 1); else filters.sarta.push(nombre);
-      b.classList.toggle('active');
-      applySartaSelectionToRef();
-      renderAll();
-    });
-    container.appendChild(b);
-  });
-}
-
 function populateFilterOptions() {
   const d = BUNDLE.dict;
-  chipSet('minaChips', d.mina.slice().sort(), 'mina');
-  chipSet('tipoChips', d.tipo.slice().sort(), 'tipo');
-  sartaChipSet();
+  const minaOpts = d.mina.slice().sort().map(v => ({ label: v, value: v }));
+  searchDropdown('minaBtn', 'minaPanel', 'minaSearch', 'minaList', minaOpts, 'mina', 'Mina');
+
+  const tipoOpts = d.tipo.slice().sort().map(v => ({ label: v, value: v }));
+  searchDropdown('tipoBtn', 'tipoPanel', 'tipoSearch', 'tipoList', tipoOpts, 'tipo', 'Tipo de perforación');
 
   const ESTADO_ORDER = ['ACTIVA', 'INACTIVA', 'RESERVA', 'NO PERTENECE'];
   const estadoOpts = d.estado.slice().sort((a, b) => {
     const ia = ESTADO_ORDER.indexOf(a), ib = ESTADO_ORDER.indexOf(b);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
-  });
-  chipSet('estadoChips', estadoOpts, 'estado');
+  }).map(v => ({ label: v, value: v }));
+  searchDropdown('estadoBtn', 'estadoPanel', 'estadoSearch', 'estadoList', estadoOpts, 'estado', 'Estado');
+
+  const sartaNames = Object.keys(BUNDLE.sartas || {}).sort();
+  document.getElementById('sartaFilterGroup').hidden = !sartaNames.length;
+  const sartaOpts = sartaNames.map(v => ({ label: v, value: v }));
+  searchDropdown('sartaBtn', 'sartaPanel', 'sartaSearch', 'sartaList', sartaOpts, 'sarta', 'Sarta', { onChange: applySartaSelectionToRef });
 
   const equipoOpts = d.equipo.slice().sort().map(v => ({ label: v, value: v }));
   searchDropdown('equipoBtn', 'equipoPanel', 'equipoSearch', 'equipoList', equipoOpts, 'equipo', 'Equipo / Jumbo');
@@ -236,7 +209,6 @@ function syncMonthBtnLabel() {
 
 function clearFilters() {
   filters = EMPTY_FILTERS();
-  document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
   document.getElementById('dateFrom').value = '';
   document.getElementById('dateTo').value = '';
   populateFilterOptions();
@@ -282,9 +254,11 @@ function renderKPICards(kpis, vidaUtil) {
     { label: 'Referencias activas', value: fmtNum(kpis.referenciasActivas), sub: `${fmtNum(kpis.piezasActivas)} piezas trazadas` },
     { label: 'Metros / herramienta activa', value: fmtNum(Math.round(avgPerToolMonth)) + ' <small>m/mes</small>', sub: 'Promedio del periodo filtrado' },
     { label: 'Cumplimiento global', value: (kpis.cumplimientoGlobal !== null ? kpis.cumplimientoGlobal.toFixed(1) + '<small>%</small>' : '—'), sub: `${kpis.nCiclosCerrados} piezas con ciclo cerrado` },
-    { label: 'Oportunidad recuperable', value: fmtCompact(kpis.recuperableM) + ' <small>m</small>', sub: `≈ USD ${fmtNum(Math.round(kpis.recuperableUSD))} · piezas dadas de baja antes de cumplir garantía` },
-    { label: 'Vida útil promedio', value: (vidaUtil.mediaDias !== null ? fmtNum(Math.round(vidaUtil.mediaDias)) + ' <small>días</small>' : '—'), sub: vidaUtil.n ? `mediana ${fmtNum(Math.round(vidaUtil.medianaDias))} días · ${fmtNum(vidaUtil.n)} piezas con ambas fechas` : 'sin piezas con fecha de inicio y de baja' },
   ];
+  if (!presentationMode) {
+    cards.push({ label: 'Oportunidad recuperable', value: fmtCompact(kpis.recuperableM) + ' <small>m</small>', sub: `≈ USD ${fmtNum(Math.round(kpis.recuperableUSD))} · piezas dadas de baja antes de cumplir garantía` });
+  }
+  cards.push({ label: 'Vida útil promedio', value: (vidaUtil.mediaDias !== null ? fmtNum(Math.round(vidaUtil.mediaDias)) + ' <small>días</small>' : '—'), sub: vidaUtil.n ? `mediana ${fmtNum(Math.round(vidaUtil.medianaDias))} días · ${fmtNum(vidaUtil.n)} piezas con ambas fechas` : 'sin piezas con fecha de inicio y de baja' });
   row.innerHTML = '';
   cards.forEach(c => {
     row.appendChild(el(`<div class="card kpi ${c.accent ? 'accent' : ''}">
@@ -884,7 +858,7 @@ function updateAuthUI() {
   const badge = document.getElementById('userBadge');
   badge.textContent = label; badge.hidden = false;
   document.getElementById('hubUserBadge').textContent = label;
-  document.getElementById('importBtn').hidden = currentUser.role !== 'admin';
+  document.getElementById('importBtn').hidden = presentationMode || currentUser.role !== 'admin';
 }
 async function loadSharedBundleIntoApp() {
   try {
@@ -912,6 +886,15 @@ function renderHub() {
     card.addEventListener('click', () => enterMine(m.slug));
     grid.appendChild(card);
   });
+  if (MINES.some(m => canSeeMine(m.slug))) {
+    const card = el(`<button type="button" class="hub-card">
+      <span class="hub-card-icon">📊</span>
+      <span class="hub-card-title">Presentación al cliente</span>
+      <span class="hub-card-sub">Vista resumida, sin CPM ni cifras de pérdida</span>
+    </button>`);
+    card.addEventListener('click', () => enterMine(MINES.find(m => canSeeMine(m.slug)).slug, { presentation: true }));
+    grid.appendChild(card);
+  }
   if (currentUser.role === 'admin') {
     const card = el(`<button type="button" class="hub-card">
       <span class="hub-card-icon">👤</span>
@@ -932,11 +915,28 @@ async function enterHub(user) {
   renderHub();
   showScreen('hub');
 }
-async function enterMine(slug) {
+function populatePresentationMineSelect() {
+  const sel = document.getElementById('presentationMineSelect');
+  sel.innerHTML = '';
+  MINES.filter(m => canSeeMine(m.slug)).forEach(m => {
+    sel.appendChild(el(`<option value="${esc(m.slug)}" ${m.slug === currentMine ? 'selected' : ''}>${esc(m.label)}</option>`));
+  });
+  if (!sel.dataset.wired) {
+    sel.dataset.wired = '1';
+    sel.addEventListener('change', () => enterMine(sel.value, { presentation: true }));
+  }
+}
+async function enterMine(slug, opts) {
+  opts = opts || {};
   currentMine = slug;
+  presentationMode = !!opts.presentation;
+  document.body.classList.toggle('presentation', presentationMode);
+  document.getElementById('presentationMineSelect').hidden = !presentationMode;
+  updateAuthUI();
   const info = mineInfo(slug);
   document.title = 'CORE TECH · ' + info.label;
-  document.getElementById('subtitle').textContent = `${info.label} — ${info.sub}`;
+  document.getElementById('presentationBadge').hidden = !presentationMode;
+  if (presentationMode) populatePresentationMineSelect();
   DEFAULT_BUNDLE = MINE_DEFAULT_BUNDLES[slug] || emptyBundle();
   BUNDLE = DEFAULT_BUNDLE;
   filters = EMPTY_FILTERS();
@@ -951,6 +951,8 @@ async function enterMine(slug) {
 }
 function backToHub() {
   currentMine = null;
+  presentationMode = false;
+  document.body.classList.remove('presentation');
   document.title = 'CORE TECH · Desempeño de Aceros de Perforación';
   renderHub();
   showScreen('hub');
