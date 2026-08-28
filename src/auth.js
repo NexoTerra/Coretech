@@ -118,11 +118,12 @@ async function getDatasetMeta() {
   return data;
 }
 
-async function setDatasetMeta(sourceFilename) {
+async function setDatasetMeta(sourceFilename, cpmIdealPorSarta) {
   const { data: userData } = await client.auth.getUser();
   const uid = userData && userData.user ? userData.user.id : null;
   const { error } = await client.from('dataset_meta').upsert({
     id: 'current', source_filename: sourceFilename, imported_at: new Date().toISOString(), imported_by: uid,
+    cpm_ideal_por_sarta: cpmIdealPorSarta || {},
   });
   if (error) throw error;
 }

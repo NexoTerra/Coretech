@@ -275,6 +275,31 @@ __CSS__
     </div>
   </section>
 
+  <section class="card">
+    <h3>CPM por sarta</h3>
+    <p class="chart-sub" id="cpmSartaConclusion"></p>
+    <div id="chartCpmSarta"></div>
+  </section>
+
+  <section class="card">
+    <h3>Metros por código dentro de cada referencia</h3>
+    <p class="chart-sub">Top 10 referencias por metros acumulados; cada barra se divide en sus códigos (piezas) individuales, coloreados según su % de cumplimiento frente al metro garantizado de esa referencia.</p>
+    <div class="chart-legend">
+      <span class="legend-item"><span class="legend-dot" style="background:var(--red)"></span>&lt;85%</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--orange)"></span>85–100%</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span>&gt;100%</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--gray3)"></span>sin garantía</span>
+    </div>
+    <div id="chartMetrosPorCodigo"></div>
+  </section>
+
+  <section class="card table-card">
+    <h3>Promedio mensual de metros por referencia</h3>
+    <p class="chart-sub">Top 8 referencias por metros acumulados; cada línea es el promedio de metros que lograron sus piezas activas ese mes.</p>
+    <div id="chartPromedioReferencia"></div>
+    <div class="table-wrap" style="margin-top:14px;"><table id="promedioReferenciaTable"></table></div>
+  </section>
+
   <section class="card presentation-hide">
     <h3>CPM — Costo por metro</h3>
     <p class="chart-sub">
@@ -364,6 +389,11 @@ __CSS__
           El CPM de cada herramienta se recalcula cada mes con su propio promedio de metros de ese mes — el
           mismo valor aplica aunque esa herramienta participe en varias sartas — para poder comparar cómo sube o
           baja el costo mes a mes.</dd>
+
+        <dt>CPM de la sarta completa</dt>
+        <dd>Suma de los CPM individuales de todas las herramientas que componen esa sarta, mes a mes. El "CPM
+          ideal" de la sarta es un valor de referencia fijo (la misma suma, pero con el desempeño esperado de
+          fábrica) contra el que se compara si el costo real de la sarta subió o bajó.</dd>
 
         <dt>Ganancia / pérdida por herramienta</dt>
         <dd>Valor económico del desempeño: en piezas por debajo de 85% se calcula cuánto dinero se pierde por

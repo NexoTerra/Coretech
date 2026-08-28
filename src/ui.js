@@ -347,6 +347,106 @@ function renderFallaCausa(bundle, life) {
   table.innerHTML = `<thead><tr><th>Causa de baja</th><th>N° piezas</th><th>% del total</th><th>Cumplimiento medio</th><th>Metros perdidos</th><th>USD perdidos (aprox.)</th></tr></thead><tbody>${rowsHtml}</tbody>`;
 }
 
+// ============ CPM por sarta (costo total de la sarta) ============
+// El CPM de la sarta es la suma de los CPM individuales de las herramientas
+// que la componen; el "ideal" es fijo (viene de la hoja DATOS KPIs, ya sumado
+// por sarta) y sirve para comparar mes a mes si el costo real subió o bajó.
+function describeCpmPorSarta(sartaTotals) {
+  const withIdeal = sartaTotals.filter(s => s.months.length && s.cpmIdeal !== null);
+  if (!withIdeal.length) return '';
+  const lastYm = withIdeal.reduce((acc, s) => {
+    const last = s.months[s.months.length - 1].ym;
+    return !acc || last > acc ? last : acc;
+  }, null);
+  const rows = withIdeal.map(s => {
+    const m = s.months.find(mm => mm.ym === lastYm);
+    if (!m) return null;
+    return { sarta: s.sarta, pct: (m.cpmSarta - s.cpmIdeal) / s.cpmIdeal * 100 };
+  }).filter(Boolean);
+  if (!rows.length) return '';
+  const arriba = rows.filter(r => r.pct > 1);
+  const abajo = rows.filter(r => r.pct < -1);
+  const peor = rows.reduce((a, b) => b.pct > a.pct ? b : a);
+  let txt = `En ${ymLabel(lastYm)}: ${arriba.length} de ${rows.length} sartas están por encima de su CPM ideal, ${abajo.length} por debajo.`;
+  if (peor.pct > 1) txt += ` La más alejada de su ideal es ${peor.sarta} (+${peor.pct.toFixed(0)}%).`;
+  return txt;
+}
+function renderCpmPorSarta(bundle, prod) {
+  const chartEl = document.getElementById('chartCpmSarta');
+  const conclusionEl = document.getElementById('cpmSartaConclusion');
+  let sartaTotals = cpmPorSartaTotal(bundle, prod);
+  if (!sartaTotals.length) {
+    chartEl.innerHTML = '<div class="empty-note">Este archivo no trae la hoja SARTAS.</div>';
+    conclusionEl.textContent = '';
+    return;
+  }
+  if (filters.sarta.length) sartaTotals = sartaTotals.filter(s => filters.sarta.includes(s.sarta));
+  if (!sartaTotals.length) {
+    chartEl.innerHTML = '<div class="empty-note">Sin datos para la sarta seleccionada.</div>';
+    conclusionEl.textContent = '';
+    return;
+  }
+  conclusionEl.textContent = describeCpmPorSarta(sartaTotals);
+  const monthSet = new Set();
+  sartaTotals.forEach(s => s.months.forEach(m => monthSet.add(m.ym)));
+  const months = Array.from(monthSet).sort();
+  const series = sartaTotals.filter(s => s.months.length).map(s => {
+    const byYm = new Map(s.months.map(m => [m.ym, m]));
+    const label = s.sarta + (s.cpmIdeal !== null ? ` (ideal $${s.cpmIdeal.toFixed(2)})` : '');
+    return { name: label, values: months.map(ym => { const m = byYm.get(ym); return m ? m.cpmSarta : null; }) };
+  });
+  chartEl.innerHTML = svgLineChart(months.map(ymLabel), series, { width: containerWidth('chartCpmSarta'), valueFmt: v => '$' + v.toFixed(2) });
+}
+
+// ============ Metros por código dentro de cada referencia ============
+function renderMetrosPorCodigo(bundle, life) {
+  const chartEl = document.getElementById('chartMetrosPorCodigo');
+  const rows = metrosPorCodigoPorReferencia(bundle, life).slice(0, 10);
+  const items = rows.map(r => ({
+    label: r.herramienta,
+    total: r.metrosTotales,
+    segments: r.codigos.map(c => ({
+      value: c.metros,
+      color: c.cumplimiento === null ? 'var(--gray3)' : rendColor(c.cumplimiento),
+      tooltip: `${r.herramienta} · ${c.codigo}: ${fmtNum(Math.round(c.metros))} m` + (c.cumplimiento !== null ? ` · ${c.cumplimiento.toFixed(0)}% cumplimiento` : ' · sin metro garantizado'),
+    })),
+  }));
+  chartEl.innerHTML = svgVBarChartStacked(items, { width: containerWidth('chartMetrosPorCodigo'), height: 280 });
+}
+
+// ============ Promedio mensual de metros por referencia ============
+function renderPromedioReferencia(bundle, prod) {
+  const d = bundle.dict;
+  const chartEl = document.getElementById('chartPromedioReferencia');
+  const table = document.getElementById('promedioReferenciaTable');
+  const totals = byHerramientaProd(bundle, prod, null).sort((a, b) => b.metros - a.metros).slice(0, 8);
+  const avgByRef = avgMetrosPorReferenciaPorMes(bundle, prod);
+  const monthSet = new Set();
+  totals.forEach(t => {
+    const byYm = avgByRef.get(d.ref.indexOf(t.ref));
+    if (byYm) byYm.forEach((_, ym) => monthSet.add(ym));
+  });
+  const months = Array.from(monthSet).sort();
+  if (!months.length) {
+    chartEl.innerHTML = '<div class="empty-note">Sin datos para los filtros actuales.</div>';
+    table.innerHTML = '';
+    return;
+  }
+  const series = totals.map(t => {
+    const byYm = avgByRef.get(d.ref.indexOf(t.ref)) || new Map();
+    return { name: t.herramienta, values: months.map(ym => { const e = byYm.get(ym); return e ? e.avg : null; }) };
+  });
+  chartEl.innerHTML = svgLineChart(months.map(ymLabel), series, { width: containerWidth('chartPromedioReferencia') });
+
+  const thead = `<tr><th>Referencia</th>${months.map(ym => `<th class="num">${esc(ymLabel(ym))}</th>`).join('')}</tr>`;
+  const tbody = totals.map(t => {
+    const byYm = avgByRef.get(d.ref.indexOf(t.ref)) || new Map();
+    const cells = months.map(ym => { const e = byYm.get(ym); return `<td class="num">${e ? fmtNum(Math.round(e.avg)) : '—'}</td>`; }).join('');
+    return `<tr><td>${esc(t.herramienta)}</td>${cells}</tr>`;
+  }).join('');
+  table.innerHTML = `<thead>${thead}</thead><tbody>${tbody}</tbody>`;
+}
+
 // ============ CPM ============
 function renderCPM(bundle, life) {
   const g = cpmGlobal(bundle, life);
@@ -691,6 +791,9 @@ function renderAll() {
   renderCumplimientoTrend(BUNDLE, life);
   renderMotivo(motivoBaja(BUNDLE, life));
   renderFallaCausa(BUNDLE, life);
+  renderCpmPorSarta(BUNDLE, prod);
+  renderMetrosPorCodigo(BUNDLE, life);
+  renderPromedioReferencia(BUNDLE, prod);
   renderCPM(BUNDLE, life);
   renderCPMTrend(BUNDLE, prod);
   renderGananciaPerdida(BUNDLE, life);

@@ -93,6 +93,7 @@ function rowsToBundle(rows, metaInfo) {
     meta: { epoch: EPOCH, generated: metaInfo.generated, source: metaInfo.source },
     dict: { mina: D_mina.items, tipo: D_tipo.items, equipo: D_equipo.items, ref: D_ref.items, herr: D_herr.items, estado: D_estado.items, causa: D_causa.items, falla: D_falla.items, operador: D_operador.items },
     catalog, prod, life, sartas,
+    cpmIdealPorSarta: metaInfo.cpmIdealPorSarta || {},
   };
 }
 
@@ -110,6 +111,7 @@ async function loadSharedBundle() {
   return rowsToBundle({ catalogRows, prodRows, piezaRows, sartaRows }, {
     generated: meta.imported_at ? new Date(meta.imported_at).toISOString().slice(0, 16).replace('T', ' ') : '',
     source: meta.source_filename || '',
+    cpmIdealPorSarta: meta.cpm_ideal_por_sarta || {},
   });
 }
 
@@ -121,7 +123,7 @@ async function publishSharedBundle(bundle, sourceFilename) {
   await CTAuth.replaceTable('sartas', 'id', rows.sartaRows);
   await CTAuth.replaceTable('piezas', 'codigo_marcado', rows.piezaRows);
   await CTAuth.replaceTable('produccion', 'id', rows.prodRows);
-  await CTAuth.setDatasetMeta(sourceFilename);
+  await CTAuth.setDatasetMeta(sourceFilename, bundle.cpmIdealPorSarta || {});
 }
 
 if (typeof module !== 'undefined') {

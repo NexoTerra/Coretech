@@ -66,6 +66,48 @@ function svgVBarChart(items, opts) {
   return `<div style="overflow-x:auto;"><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="min-width:${Math.min(W,320)}px" role="img">${gridLines}${bars}${labels}</svg></div>`;
 }
 
+// Vertical STACKED bar chart. items: [{label, total, segments: [{value, color, tooltip}]}]
+// Usado para "metros por código dentro de cada referencia": cada barra es una
+// referencia, cada segmento un código individual (puede haber decenas), así
+// que no se rotulan los segmentos por separado — el color y el tooltip cargan
+// el detalle.
+function svgVBarChartStacked(items, opts) {
+  opts = opts || {};
+  const W = opts.width || 560, H = opts.height || 240;
+  const padL = 54, padR = 10, padT = 18, padB = 60;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  if (!items.length) return `<div class="empty-note">Sin datos para los filtros actuales.</div>`;
+  const maxV = opts.maxV || Math.max(...items.map(d => d.total), 1);
+  const fmtV = opts.valueFmt || fmtCompact;
+  const n = items.length;
+  const gap = plotW / n * 0.28;
+  const bw = plotW / n - gap;
+
+  let bars = '', labels = '', gridLines = '';
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const y = padT + plotH - (plotH * i / ticks);
+    const val = maxV * i / ticks;
+    gridLines += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" class="axis-line"/>`;
+    gridLines += `<text x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" class="bar-label">${fmtV(val)}</text>`;
+  }
+  items.forEach((d, i) => {
+    const x = padL + i * (plotW / n) + gap / 2;
+    let yCursor = padT + plotH;
+    (d.segments || []).forEach(seg => {
+      const segH = plotH * (Math.min(seg.value, maxV) / maxV);
+      const y = yCursor - segH;
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(segH, 0).toFixed(1)}" fill="${seg.color}"><title>${esc(seg.tooltip)}</title></rect>`;
+      yCursor = y;
+    });
+    const topY = padT + plotH - plotH * (Math.min(d.total, maxV) / maxV);
+    bars += `<text x="${(x + bw / 2).toFixed(1)}" y="${(topY - 6).toFixed(1)}" text-anchor="middle" class="bar-value">${fmtV(d.total)}</text>`;
+    const label = truncateToWidth(d.label, plotW / n + 10, 10);
+    labels += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - padB + 16}" text-anchor="middle" class="bar-label" transform="rotate(20 ${(x + bw / 2).toFixed(1)} ${H - padB + 16})">${esc(label)}</text>`;
+  });
+  return `<div style="overflow-x:auto;"><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="min-width:${Math.min(W,320)}px" role="img">${gridLines}${bars}${labels}</svg></div>`;
+}
+
 // Horizontal bar chart. items: [{label, value, color?, sub?}]
 function svgHBarChart(items, opts) {
   opts = opts || {};
@@ -214,5 +256,5 @@ function rendColor(pct) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { fmtNum, fmtCompact, esc, svgVBarChart, svgHBarChart, svgHBarChartPaired, svgLineChart, rendPillClass, rendColor };
+  module.exports = { fmtNum, fmtCompact, esc, svgVBarChart, svgVBarChartStacked, svgHBarChart, svgHBarChartPaired, svgLineChart, rendPillClass, rendColor };
 }

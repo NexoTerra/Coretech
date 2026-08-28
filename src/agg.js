@@ -477,6 +477,52 @@ function cpmPorSarta(bundle, prod) {
   return out;
 }
 
+// ---------- CPM mensual de la SARTA completa (suma de los CPM de sus referencias) ----------
+// El CPM ideal de cada sarta es un valor fijo (bundle.cpmIdealPorSarta, viene de
+// la hoja DATOS KPIs — ya es la suma de los CPM individuales de sus referencias)
+// que sirve de referencia para comparar contra el CPM real mes a mes.
+function cpmPorSartaTotal(bundle, prod) {
+  const porSarta = cpmPorSarta(bundle, prod);
+  const cpmIdealMap = bundle.cpmIdealPorSarta || {};
+  return porSarta.map(s => {
+    const monthMap = new Map(); // ym -> {suma, refsConDatos}
+    s.referencias.forEach(r => {
+      r.months.forEach(m => {
+        if (m.cpm === null) return;
+        if (!monthMap.has(m.ym)) monthMap.set(m.ym, { suma: 0, refsConDatos: 0 });
+        const e = monthMap.get(m.ym);
+        e.suma += m.cpm; e.refsConDatos++;
+      });
+    });
+    const months = Array.from(monthMap.entries()).sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([ym, e]) => ({ ym, cpmSarta: e.suma, refsConDatos: e.refsConDatos, refsTotal: s.referencias.length }));
+    return { sarta: s.sarta, months, cpmIdeal: cpmIdealMap[s.sarta] ?? null, refsTotal: s.referencias.length };
+  });
+}
+
+// ---------- Metros por código dentro de cada referencia (para validar pieza a pieza) ----------
+function metrosPorCodigoPorReferencia(bundle, life) {
+  const { dict } = bundle;
+  const map = new Map(); // refIdx -> {herrIdx, garantizado, codigos:[{codigo,metros,cumplimiento}]}
+  for (const l of life) {
+    const [codigo, refIdx, herrIdx, mp, mg] = l;
+    if (refIdx === null || refIdx === undefined || !(mp > 0)) continue;
+    if (!map.has(refIdx)) map.set(refIdx, { herrIdx, garantizado: mg, codigos: [] });
+    const e = map.get(refIdx);
+    e.codigos.push({ codigo, metros: mp, cumplimiento: mg ? (mp / mg * 100) : null });
+  }
+  const rows = Array.from(map.entries()).map(([refIdx, e]) => {
+    e.codigos.sort((a, b) => b.metros - a.metros);
+    return {
+      ref: dict.ref[refIdx], herramienta: dict.herr[e.herrIdx] || dict.ref[refIdx],
+      garantizado: e.garantizado, codigos: e.codigos,
+      metrosTotales: e.codigos.reduce((a, c) => a + c.metros, 0),
+    };
+  });
+  rows.sort((a, b) => b.metrosTotales - a.metrosTotales);
+  return rows;
+}
+
 // ---------- Ganancia / pérdida en USD por herramienta ----------
 // Por debajo de 85% del metro garantizado: el cliente pierde (no recibió los
 // metros que pagó). Por encima de 100%: el cliente gana (recibió más metros
@@ -534,7 +580,8 @@ if (typeof module !== 'undefined') {
     cpmPorHerramienta, cpmGlobal, causaBreakdown, fallaBreakdown,
     vidaUtilGlobal, vidaUtilPorHerramienta, cumplimientoPorMes,
     cpmTrend, rendimientoPorPieza,
-    avgMetrosPorReferenciaPorMes, cpmPorSarta, gananciaPerdidaPorHerramienta,
+    avgMetrosPorReferenciaPorMes, cpmPorSarta, cpmPorSartaTotal, metrosPorCodigoPorReferencia,
+    gananciaPerdidaPorHerramienta,
     dayToYM, dayToYear, dayToDateStr, MONTH_NAMES,
   };
 }

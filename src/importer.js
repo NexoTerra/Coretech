@@ -373,6 +373,10 @@ const MGAR_SHEET_ALIASES = ['MGAR'];
 const CONTADOR_SHEET_ALIASES = ['CONTADOR DE METROS'];
 const CODIGOS_ALFA_SHEET_ALIASES = ['CODIGOS ALFA NUMERICOS', 'CODIGOS ALFANUMERICOS'];
 const SARTAS_SHEET_ALIASES = ['SARTAS'];
+const DATOS_KPIS_SHEET_ALIASES = ['DATOS KPIS'];
+const DATOS_KPIS_COLS = {
+  sarta: ['CMP', 'SARTA'], refcode: ['REFERENCIA'], cpmIdeal: ['TOTAL CPM'],
+};
 
 const MARMATO_TOOL_COLS = [
   ['SHANK', ['SHANK'], ['DESCRIP SHANK']],
@@ -399,6 +403,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
   const contadorSheet = findSheet(workbook, CONTADOR_SHEET_ALIASES);
   const codigosSheet = findSheet(workbook, CODIGOS_ALFA_SHEET_ALIASES);
   const sartasSheet = findSheet(workbook, SARTAS_SHEET_ALIASES);
+  const datosKpisSheet = findSheet(workbook, DATOS_KPIS_SHEET_ALIASES);
   if (!mgarSheet || !contadorSheet || !codigosSheet) {
     throw new Error('No se encontraron las hojas esperadas: "MGAR", "CONTADOR DE METROS" y "CODIGOS ALFA NUMERICOS".');
   }
@@ -464,6 +469,21 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
         if (code && !refs.includes(code)) refs.push(code);
       }
       sartas[nombre] = refs;
+    }
+  }
+
+  // 3.5 DATOS KPIs: CPM ideal por sarta = suma del CPM individual (columna "Total
+  // CPM") de cada referencia que compone esa sarta. Es un valor fijo de
+  // referencia (no se recalcula mes a mes) para comparar contra el CPM real.
+  const cpmIdealPorSarta = {};
+  if (datosKpisSheet) {
+    const { headers, data } = sheetToRows(workbook, datosKpisSheet);
+    const c = {}; for (const k in DATOS_KPIS_COLS) c[k] = colIndex(headers, DATOS_KPIS_COLS[k]);
+    for (const row of data) {
+      const sarta = c.sarta >= 0 ? norm(row[c.sarta]) : null;
+      const cpm = c.cpmIdeal >= 0 ? toNumOrNull(row[c.cpmIdeal]) : null;
+      if (!sarta || cpm === null) continue;
+      cpmIdealPorSarta[sarta] = (cpmIdealPorSarta[sarta] || 0) + cpm;
     }
   }
 
@@ -540,7 +560,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
   return {
     meta: { epoch: EPOCH, generated: new Date().toISOString().slice(0, 16).replace('T', ' '), source: sourceName },
     dict: { mina: D_mina.items, tipo: D_tipo.items, equipo: D_equipo.items, ref: D_ref.items, herr: D_herr.items, estado: D_estado.items, causa: D_causa.items, falla: D_falla.items, operador: D_operador.items },
-    catalog, prod, life, sartas,
+    catalog, prod, life, sartas, cpmIdealPorSarta,
   };
 }
 
