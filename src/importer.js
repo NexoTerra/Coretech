@@ -375,7 +375,12 @@ const CODIGOS_ALFA_SHEET_ALIASES = ['CODIGOS ALFA NUMERICOS', 'CODIGOS ALFANUMER
 const SARTAS_SHEET_ALIASES = ['SARTAS'];
 const DATOS_KPIS_SHEET_ALIASES = ['DATOS KPIS'];
 const DATOS_KPIS_COLS = {
-  sarta: ['CMP', 'SARTA'], refcode: ['REFERENCIA'], cpmIdeal: ['TOTAL CPM'],
+  sarta: ['CMP', 'SARTA'], refcode: ['REFERENCIA'], cpmIdeal: ['CPM IDEAL', 'TOTAL CPM'],
+};
+const TOTALIZADOR_SHEET_ALIASES = ['TOTALIZADOR'];
+const TOTALIZADOR_COLS = {
+  codigo: ['CODIGO INTERNO'], fechaDescarte: ['FECHA DE DESCARTE'],
+  modo: ['MODO DE DESCARTE'], causa: ['CAUSA DE DESCARTE'],
 };
 
 const MARMATO_TOOL_COLS = [
@@ -404,6 +409,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
   const codigosSheet = findSheet(workbook, CODIGOS_ALFA_SHEET_ALIASES);
   const sartasSheet = findSheet(workbook, SARTAS_SHEET_ALIASES);
   const datosKpisSheet = findSheet(workbook, DATOS_KPIS_SHEET_ALIASES);
+  const totalizadorSheet = findSheet(workbook, TOTALIZADOR_SHEET_ALIASES);
   if (!mgarSheet || !contadorSheet || !codigosSheet) {
     throw new Error('No se encontraron las hojas esperadas: "MGAR", "CONTADOR DE METROS" y "CODIGOS ALFA NUMERICOS".');
   }
@@ -493,6 +499,26 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
     }
   }
 
+  // 3.6 TOTALIZADOR: por código, la fecha real de baja (comprobante de que la
+  // pieza ya terminó su vida útil — no el campo ESTADO, que puede estar mal
+  // mientras el cliente termina de migrar sus datos) más modo/causa de
+  // descarte cuando existan. Mientras esas columnas sigan vacías en el
+  // archivo, esto simplemente no aporta nada todavía (a propósito).
+  const totalizadorByCode = new Map();
+  if (totalizadorSheet) {
+    const { headers, data } = sheetToRows(workbook, totalizadorSheet);
+    const c = {}; for (const k in TOTALIZADOR_COLS) c[k] = colIndex(headers, TOTALIZADOR_COLS[k]);
+    for (const row of data) {
+      const codigo = c.codigo >= 0 ? norm(row[c.codigo]) : null;
+      if (!codigo) continue;
+      const fechaDescarte = c.fechaDescarte >= 0 ? excelDateToDayNum(row[c.fechaDescarte], EPOCH) : null;
+      const modo = c.modo >= 0 ? norm(row[c.modo]) : null;
+      const causa = c.causa >= 0 ? norm(row[c.causa]) : null;
+      if (fechaDescarte === null && !modo && !causa) continue;
+      totalizadorByCode.set(codigo, { fechaDescarte, modo, causa });
+    }
+  }
+
   // 4. CONTADOR DE METROS -> melted production log
   const prod = [];
   const pieceMeta = new Map(); // composite -> latest {fecha, equipo, estado, mina, operador}
@@ -554,11 +580,16 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
     const code = composite.split(':').slice(1).join(':');
     const delivery = codeMap.get(code);
     const fechaInicio = delivery ? delivery.fechaEntrega : null;
+    const tot = totalizadorByCode.get(code);
+    const bucket = tot && tot.causa ? bucketCausa(tot.causa.toUpperCase()) : 'SIN_CAUSA';
 
     life.push([
       composite, agg.refIdx, agg.herrIdx, Math.round(agg.metrosSum * 1000) / 1000, mg,
-      D_estado.get(meta.estado || null), 'SIN_CAUSA', null, null,
-      D_mina.get(meta.mina || null), D_equipo.get(meta.equipo || null), null, usd, fechaInicio,
+      D_estado.get(meta.estado || null), bucket,
+      tot && tot.causa ? D_causa.get(tot.causa) : null,
+      tot && tot.modo ? D_falla.get(tot.modo) : null,
+      D_mina.get(meta.mina || null), D_equipo.get(meta.equipo || null),
+      tot ? tot.fechaDescarte : null, usd, fechaInicio,
       D_operador.get(meta.operador || null),
     ]);
   }

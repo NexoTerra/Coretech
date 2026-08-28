@@ -295,7 +295,7 @@ __CSS__
 
   <section class="card table-card">
     <h3>Promedio mensual de metros por referencia</h3>
-    <p class="chart-sub">Top 8 referencias por metros acumulados; cada línea es el promedio de metros que lograron sus piezas activas ese mes.</p>
+    <p class="chart-sub">Top 8 referencias por metros acumulados; cada línea es el promedio de metros que lograron ese mes las piezas que ya finalizaron su vida útil (con fecha de baja registrada).</p>
     <div id="chartPromedioReferencia"></div>
     <div class="table-wrap" style="margin-top:14px;"><table id="promedioReferenciaTable"></table></div>
   </section>
@@ -304,7 +304,8 @@ __CSS__
     <h3>CPM — Costo por metro</h3>
     <p class="chart-sub">
       CPM real = precio unitario de la herramienta / metros que realmente logra en promedio. CPM ideal = precio
-      unitario / metro garantizado.
+      unitario / metro garantizado. Solo se cuentan piezas que ya tienen fecha de baja registrada — una pieza
+      todavía activa no ha terminado de acumular metros y distorsionaría el promedio.
     </p>
     <div class="kpirow" id="cpmKpiRow"></div>
     <h4 style="margin:18px 0 4px; font-size:13px;">CPM real vs. CPM ideal por herramienta (top 12 por metros perforados)</h4>

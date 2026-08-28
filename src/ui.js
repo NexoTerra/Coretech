@@ -386,10 +386,15 @@ function renderCpmPorSarta(bundle, prod) {
     conclusionEl.textContent = '';
     return;
   }
-  conclusionEl.textContent = describeCpmPorSarta(sartaTotals);
   const monthSet = new Set();
   sartaTotals.forEach(s => s.months.forEach(m => monthSet.add(m.ym)));
   const months = Array.from(monthSet).sort();
+  if (!months.length) {
+    chartEl.innerHTML = '<div class="empty-note">Todavía no hay piezas con fecha de baja registrada — el CPM solo se calcula con piezas que ya finalizaron su vida útil.</div>';
+    conclusionEl.textContent = '';
+    return;
+  }
+  conclusionEl.textContent = describeCpmPorSarta(sartaTotals);
   const series = sartaTotals.filter(s => s.months.length).map(s => {
     const byYm = new Map(s.months.map(m => [m.ym, m]));
     const label = s.sarta + (s.cpmIdeal !== null ? ` (ideal $${s.cpmIdeal.toFixed(2)})` : '');
@@ -440,7 +445,7 @@ function renderPromedioReferencia(bundle, prod) {
   });
   const months = Array.from(monthSet).sort();
   if (!months.length) {
-    chartEl.innerHTML = '<div class="empty-note">Sin datos para los filtros actuales.</div>';
+    chartEl.innerHTML = '<div class="empty-note">Todavía no hay piezas con fecha de baja registrada para calcular este promedio.</div>';
     table.innerHTML = '';
     return;
   }

@@ -208,10 +208,12 @@ function motivoBaja(bundle, life) {
 // ---------- CPM (costo por metro) ----------
 // Sigue la convención heredada de Marmato: CPM = precio unitario / metros logrados.
 // cpmIdeal usa el metro garantizado (catálogo); cpmReal usa el promedio de metros
-// realmente perforados por las piezas usadas de esa referencia.
+// realmente perforados por las piezas usadas de esa referencia. Solo se cuentan
+// piezas con fecha de baja registrada (ya finalizaron su vida útil) — una pieza
+// activa todavía no tiene su total definitivo de metros.
 function cpmPorHerramienta(bundle, life) {
   const { dict, catalog } = bundle;
-  const used = life.filter(l => l[3] > 0);
+  const used = life.filter(l => l[3] > 0 && l[11] !== null && l[11] !== undefined);
   const map = new Map();
   for (const l of used) {
     const [, refIdx, herrIdx, mp, , , , , , , , , usd] = l;
@@ -244,7 +246,7 @@ function cpmPorHerramienta(bundle, life) {
 }
 
 function cpmGlobal(bundle, life) {
-  const used = life.filter(l => l[3] > 0);
+  const used = life.filter(l => l[3] > 0 && l[11] !== null && l[11] !== undefined);
   let usdGastado = 0, metrosReales = 0, metrosIdeales = 0, sobrecostoUSD = 0;
   let nConUsd = 0;
   for (const l of used) {
@@ -423,13 +425,21 @@ function cpmTrend(bundle, life) {
 // ---------- Promedio mensual de metros por referencia (para CPM por sarta) ----------
 // "Promedio mensual" = para cada referencia y mes, el promedio de metros totales
 // logrados ESE MES por cada pieza (código) que tuvo actividad de esa referencia.
+// Alimenta el CPM, así que solo cuentan piezas que ya finalizaron su vida útil
+// (tienen fecha de baja registrada) — una pieza todavía activa no ha terminado
+// de acumular metros y distorsionaría el promedio hacia abajo.
 function avgMetrosPorReferenciaPorMes(bundle, prod) {
   const epoch = bundle.meta.epoch || EPOCH_DEFAULT;
+  const dadaDeBaja = new Set();
+  for (const l of bundle.life) {
+    if (l[11] !== null && l[11] !== undefined) dadaDeBaja.add(l[0]);
+  }
   // refIdx -> ym -> codigoMarcado -> metros acumulados ese mes
   const acc = new Map();
   for (const p of prod) {
     const [fecha, , , , refIdx, , cm, metros] = p;
     if (refIdx === null || refIdx === undefined) continue;
+    if (!dadaDeBaja.has(cm)) continue;
     const ym = dayToYM(fecha, epoch);
     if (!acc.has(refIdx)) acc.set(refIdx, new Map());
     const byYm = acc.get(refIdx);
