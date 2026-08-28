@@ -401,17 +401,29 @@ function renderCpmPorSarta(bundle, prod) {
 // ============ Metros por código dentro de cada referencia ============
 function renderMetrosPorCodigo(bundle, life) {
   const chartEl = document.getElementById('chartMetrosPorCodigo');
-  const rows = metrosPorCodigoPorReferencia(bundle, life).slice(0, 10);
-  const items = rows.map(r => ({
-    label: r.herramienta,
-    total: r.metrosTotales,
-    segments: r.codigos.map(c => ({
-      value: c.metros,
-      color: c.cumplimiento === null ? 'var(--gray3)' : rendColor(c.cumplimiento),
-      tooltip: `${r.herramienta} · ${c.codigo}: ${fmtNum(Math.round(c.metros))} m` + (c.cumplimiento !== null ? ` · ${c.cumplimiento.toFixed(0)}% cumplimiento` : ' · sin metro garantizado'),
-    })),
+  if (filters.ref.length !== 1) {
+    chartEl.innerHTML = '<div class="empty-note">Selecciona una única Herramienta/Referencia en el filtro de arriba para ver, código por código, cuántos metros hizo cada pieza frente al metro garantizado.</div>';
+    return;
+  }
+  const refcode = filters.ref[0];
+  const row = metrosPorCodigoPorReferencia(bundle, life).find(r => r.ref === refcode);
+  if (!row || !row.codigos.length) {
+    chartEl.innerHTML = '<div class="empty-note">Sin datos para esta referencia con los filtros actuales.</div>';
+    return;
+  }
+  const items = row.codigos.map(c => ({
+    label: c.codigo.includes(':') ? c.codigo.slice(c.codigo.indexOf(':') + 1) : c.codigo,
+    a: row.garantizado, b: c.metros,
+    aValueLabel: row.garantizado ? fmtCompact(row.garantizado) : '—',
+    bValueLabel: fmtCompact(c.metros),
+    bColor: c.cumplimiento === null ? 'var(--gray3)' : rendColor(c.cumplimiento),
+    tooltipA: row.garantizado ? fmtNum(row.garantizado) + ' m garantizados' : 'sin metro garantizado',
+    tooltipB: fmtNum(Math.round(c.metros)) + ' m' + (c.cumplimiento !== null ? ' · ' + c.cumplimiento.toFixed(0) + '% cumplimiento' : ''),
   }));
-  chartEl.innerHTML = svgVBarChartStacked(items, { width: containerWidth('chartMetrosPorCodigo'), height: 280 });
+  chartEl.innerHTML = svgVBarChartGrouped(items, {
+    width: containerWidth('chartMetrosPorCodigo'), height: 280, groupWidth: 64,
+    aLabel: 'Metro garantizado', bLabel: 'Metros logrados',
+  });
 }
 
 // ============ Promedio mensual de metros por referencia ============

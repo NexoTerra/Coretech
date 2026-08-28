@@ -71,41 +71,57 @@ function svgVBarChart(items, opts) {
 // referencia, cada segmento un código individual (puede haber decenas), así
 // que no se rotulan los segmentos por separado — el color y el tooltip cargan
 // el detalle.
-function svgVBarChartStacked(items, opts) {
+// Vertical grouped bar chart, 2 bars per categoría (p.ej. metro garantizado
+// vs. metros logrados por cada código de una referencia). A diferencia de los
+// otros gráficos verticales, el ancho crece con la cantidad de categorías en
+// vez de comprimirse al ancho del contenedor — con decenas de códigos, cada
+// par de barras necesita su propio espacio legible y el usuario se desplaza
+// horizontalmente en vez de ver barras ilegibles de 2px.
+// items: [{label, a, b, aValueLabel?, bValueLabel?, tooltipA?, tooltipB?, bColor?}]
+function svgVBarChartGrouped(items, opts) {
   opts = opts || {};
-  const W = opts.width || 560, H = opts.height || 240;
-  const padL = 54, padR = 10, padT = 18, padB = 60;
-  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const H = opts.height || 260;
+  const padL = 52, padR = 14, padT = 22, padB = 66;
+  const groupW = opts.groupWidth || 64;
+  const plotH = H - padT - padB;
   if (!items.length) return `<div class="empty-note">Sin datos para los filtros actuales.</div>`;
-  const maxV = opts.maxV || Math.max(...items.map(d => d.total), 1);
+  const containerW = opts.width || 560;
+  const neededW = padL + padR + groupW * items.length;
+  const W = Math.max(containerW, neededW);
+  const plotEndX = W - padR;
+  const maxV = opts.maxV || Math.max(...items.map(d => Math.max(d.a || 0, d.b || 0)), 1);
   const fmtV = opts.valueFmt || fmtCompact;
-  const n = items.length;
-  const gap = plotW / n * 0.28;
-  const bw = plotW / n - gap;
+  const colorA = opts.colorA || 'var(--navy)';
+  const colorB = opts.colorB || 'var(--cyan3)';
+  const barW = groupW * 0.32;
 
-  let bars = '', labels = '', gridLines = '';
+  let gridLines = '';
   const ticks = 4;
   for (let i = 0; i <= ticks; i++) {
     const y = padT + plotH - (plotH * i / ticks);
     const val = maxV * i / ticks;
-    gridLines += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" class="axis-line"/>`;
+    gridLines += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${plotEndX}" y2="${y.toFixed(1)}" class="axis-line"/>`;
     gridLines += `<text x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" class="bar-label">${fmtV(val)}</text>`;
   }
+  let bars = '', labels = '';
   items.forEach((d, i) => {
-    const x = padL + i * (plotW / n) + gap / 2;
-    let yCursor = padT + plotH;
-    (d.segments || []).forEach(seg => {
-      const segH = plotH * (Math.min(seg.value, maxV) / maxV);
-      const y = yCursor - segH;
-      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(segH, 0).toFixed(1)}" fill="${seg.color}"><title>${esc(seg.tooltip)}</title></rect>`;
-      yCursor = y;
-    });
-    const topY = padT + plotH - plotH * (Math.min(d.total, maxV) / maxV);
-    bars += `<text x="${(x + bw / 2).toFixed(1)}" y="${(topY - 6).toFixed(1)}" text-anchor="middle" class="bar-value">${fmtV(d.total)}</text>`;
-    const label = truncateToWidth(d.label, plotW / n + 10, 10);
-    labels += `<text x="${(x + bw / 2).toFixed(1)}" y="${H - padB + 16}" text-anchor="middle" class="bar-label" transform="rotate(20 ${(x + bw / 2).toFixed(1)} ${H - padB + 16})">${esc(label)}</text>`;
+    const cx = padL + i * groupW + groupW / 2;
+    if (d.a !== null && d.a !== undefined) {
+      const h = plotH * (Math.min(d.a, maxV) / maxV);
+      const x = cx - barW - 2, y = padT + plotH - h;
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0).toFixed(1)}" rx="2" fill="${colorA}"><title>${esc(d.label)}: ${d.tooltipA || fmtNum(d.a)}</title></rect>`;
+      bars += `<text x="${(x + barW / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" text-anchor="middle" class="bar-value">${esc(d.aValueLabel || fmtCompact(d.a))}</text>`;
+    }
+    if (d.b !== null && d.b !== undefined) {
+      const h = plotH * (Math.min(d.b, maxV) / maxV);
+      const x = cx + 2, y = padT + plotH - h;
+      bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h, 0).toFixed(1)}" rx="2" fill="${d.bColor || colorB}"><title>${esc(d.label)}: ${d.tooltipB || fmtNum(d.b)}</title></rect>`;
+      bars += `<text x="${(x + barW / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" text-anchor="middle" class="bar-value">${esc(d.bValueLabel || fmtCompact(d.b))}</text>`;
+    }
+    const label = truncateToWidth(d.label, groupW + 24, 10);
+    labels += `<text x="${cx.toFixed(1)}" y="${H - padB + 16}" text-anchor="middle" class="bar-label" transform="rotate(30 ${cx.toFixed(1)} ${H - padB + 16})">${esc(label)}</text>`;
   });
-  return `<div style="overflow-x:auto;"><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="min-width:${Math.min(W,320)}px" role="img">${gridLines}${bars}${labels}</svg></div>`;
+  return `<div style="overflow-x:auto;"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="min-width:${W}px" role="img">${gridLines}${bars}${labels}</svg></div>`;
 }
 
 // Horizontal bar chart. items: [{label, value, color?, sub?}]
@@ -256,5 +272,5 @@ function rendColor(pct) {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { fmtNum, fmtCompact, esc, svgVBarChart, svgVBarChartStacked, svgHBarChart, svgHBarChartPaired, svgLineChart, rendPillClass, rendColor };
+  module.exports = { fmtNum, fmtCompact, esc, svgVBarChart, svgVBarChartGrouped, svgHBarChart, svgHBarChartPaired, svgLineChart, rendPillClass, rendColor };
 }
