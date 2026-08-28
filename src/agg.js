@@ -229,7 +229,9 @@ function cpmPorHerramienta(bundle, life) {
     const avgMetrosReal = e.mpN ? e.mpSum / e.mpN : null;
     const garantizado = cat.g != null ? cat.g : null;
     const cpmReal = (precio != null && avgMetrosReal) ? precio / avgMetrosReal : null;
-    const cpmIdeal = (precio != null && garantizado) ? precio / garantizado : null;
+    // El CPM ideal viene de DATOS KPIs (columna "Total CPM") cuando el archivo
+    // lo trae; si no, se aproxima con precio/garantizado.
+    const cpmIdeal = cat.cpmIdeal != null ? cat.cpmIdeal : ((precio != null && garantizado) ? precio / garantizado : null);
     rows.push({
       ref, herramienta: dict.herr[e.herrIdx] || ref, n: e.mpN, precio,
       avgMetrosReal, garantizado, cpmReal, cpmIdeal,

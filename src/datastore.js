@@ -20,6 +20,7 @@ function bundleToRows(bundle) {
   const d = bundle.dict;
   const catalogRows = Object.entries(bundle.catalog || {}).map(([ref_code, c]) => ({
     ref_code, descripcion: c.d ?? null, precio: c.p ?? null, metro_garantizado: c.g ?? null, metro_aceptable: c.a ?? null,
+    cpm_ideal: c.cpmIdeal ?? null,
   }));
   const prodRows = bundle.prod.map(p => {
     const [fecha, minaIdx, tipoIdx, equipoIdx, refIdx, herrIdx, codigo_marcado, metros, esPrimario, operadorIdx] = p;
@@ -64,7 +65,7 @@ function rowsToBundle(rows, metaInfo) {
 
   const catalog = {};
   rows.catalogRows.forEach(r => {
-    catalog[r.ref_code] = { d: r.descripcion, p: numOrNull(r.precio), g: numOrNull(r.metro_garantizado), a: numOrNull(r.metro_aceptable) };
+    catalog[r.ref_code] = { d: r.descripcion, p: numOrNull(r.precio), g: numOrNull(r.metro_garantizado), a: numOrNull(r.metro_aceptable), cpmIdeal: numOrNull(r.cpm_ideal) };
   });
 
   const prod = rows.prodRows.map(r => [

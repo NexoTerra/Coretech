@@ -472,18 +472,24 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
     }
   }
 
-  // 3.5 DATOS KPIs: CPM ideal por sarta = suma del CPM individual (columna "Total
-  // CPM") de cada referencia que compone esa sarta. Es un valor fijo de
-  // referencia (no se recalcula mes a mes) para comparar contra el CPM real.
+  // 3.5 DATOS KPIs: el CPM ideal de cada referencia es el que trae la columna
+  // "Total CPM" (columna E) — no se recalcula como precio/garantizado. El CPM
+  // ideal de una sarta es la suma de esos valores para sus referencias.
   const cpmIdealPorSarta = {};
+  const cpmIdealPorRef = {};
   if (datosKpisSheet) {
     const { headers, data } = sheetToRows(workbook, datosKpisSheet);
     const c = {}; for (const k in DATOS_KPIS_COLS) c[k] = colIndex(headers, DATOS_KPIS_COLS[k]);
     for (const row of data) {
       const sarta = c.sarta >= 0 ? norm(row[c.sarta]) : null;
+      const refcode = c.refcode >= 0 ? normRef(row[c.refcode]) : null;
       const cpm = c.cpmIdeal >= 0 ? toNumOrNull(row[c.cpmIdeal]) : null;
-      if (!sarta || cpm === null) continue;
-      cpmIdealPorSarta[sarta] = (cpmIdealPorSarta[sarta] || 0) + cpm;
+      if (cpm === null) continue;
+      if (sarta) cpmIdealPorSarta[sarta] = (cpmIdealPorSarta[sarta] || 0) + cpm;
+      if (refcode && !(refcode in cpmIdealPorRef)) cpmIdealPorRef[refcode] = cpm;
+    }
+    for (const [refcode, cpm] of Object.entries(cpmIdealPorRef)) {
+      if (catalog[refcode]) catalog[refcode].cpmIdeal = cpm;
     }
   }
 
