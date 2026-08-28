@@ -152,6 +152,16 @@ __CSS__
         </div>
       </div>
     </div>
+    <div class="filter-group">
+      <label>Operador</label>
+      <div class="dropdown">
+        <button class="dropdown-btn" id="operadorBtn" type="button"><span class="dd-label">Operador</span> ▾</button>
+        <div class="dropdown-panel" id="operadorPanel" style="display:none;">
+          <input type="search" id="operadorSearch" placeholder="Buscar operador…">
+          <div id="operadorList"></div>
+        </div>
+      </div>
+    </div>
     <div class="filter-group" id="sartaFilterGroup">
       <label>Sarta</label>
       <div class="dropdown">
@@ -336,8 +346,10 @@ __CSS__
 
         <dt>Estado</dt>
         <dd>Situación actual de una pieza según su reporte más reciente: <b>Activa</b> (en uso), <b>Inactiva</b>
-          (fuera de servicio), <b>Reserva</b> (disponible sin usar) o <b>No pertenece</b> (reporte sin
-          herramienta asociada).</dd>
+          (fuera de servicio) o <b>Reserva</b> (disponible sin usar).</dd>
+
+        <dt>Operador</dt>
+        <dd>Persona que operaba el equipo en el reporte más reciente de esa pieza.</dd>
 
         <dt>CPM real</dt>
         <dd>Costo por metro efectivo: precio unitario de la herramienta ÷ promedio de metros que realmente

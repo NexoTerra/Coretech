@@ -1,10 +1,10 @@
 // ---------- Pure aggregation engine (no DOM) ----------
-// Works over a "bundle": {dict:{mina,tipo,equipo,ref,herr,estado,causa,falla}, catalog, prod, life, meta}
-// prod row: [fecha(dayNum), minaIdx, tipoIdx, equipoIdx, refIdx, herrIdx, codigoMarcado, metros, primary(0|1)]
+// Works over a "bundle": {dict:{mina,tipo,equipo,ref,herr,estado,causa,falla,operador}, catalog, prod, life, meta}
+// prod row: [fecha(dayNum), minaIdx, tipoIdx, equipoIdx, refIdx, herrIdx, codigoMarcado, metros, primary(0|1), operadorIdx]
 // `primary` marks, per original report row, the single tool that should count once toward
 // "total metros" / monthly totals when several tools share one drilling event (wide-format
 // sources). Every melted record still counts fully in by-herramienta breakdowns.
-// life row: [codigoMarcado, refIdx, herrIdx, metrosPerforados, metrosGarantizados, estadoIdx, bucket, causaIdx, fallaIdx, minaIdx, equipoIdx, fechaFinal(dayNum|null), usd, fechaInicio(dayNum|null)]
+// life row: [codigoMarcado, refIdx, herrIdx, metrosPerforados, metrosGarantizados, estadoIdx, bucket, causaIdx, fallaIdx, minaIdx, equipoIdx, fechaFinal(dayNum|null), usd, fechaInicio(dayNum|null), operadorIdx]
 
 const EPOCH_DEFAULT = '2020-01-01';
 
@@ -35,16 +35,18 @@ function applyFilters(bundle, filters) {
   const equipoSet = filters.equipo && filters.equipo.length ? new Set(filters.equipo) : null;
   const refSet = filters.ref && filters.ref.length ? new Set(filters.ref) : null;
   const estadoSet = filters.estado && filters.estado.length ? new Set(filters.estado) : null;
+  const operadorSet = filters.operador && filters.operador.length ? new Set(filters.operador) : null;
   const monthSet = filters.months && filters.months.length ? new Set(filters.months) : null;
   const dFrom = (!monthSet && filters.dateFrom) ? Math.floor((new Date(filters.dateFrom + 'T00:00:00Z') - new Date(epoch + 'T00:00:00Z')) / 86400000) : null;
   const dTo = (!monthSet && filters.dateTo) ? Math.floor((new Date(filters.dateTo + 'T00:00:00Z') - new Date(epoch + 'T00:00:00Z')) / 86400000) : null;
 
   const prod = bundle.prod.filter(p => {
-    const [fecha, minaIdx, tipoIdx, equipoIdx, refIdx] = p;
+    const [fecha, minaIdx, tipoIdx, equipoIdx, refIdx, , , , , operadorIdx] = p;
     if (minaSet && !minaSet.has(dict.mina[minaIdx])) return false;
     if (tipoSet && !tipoSet.has(dict.tipo[tipoIdx])) return false;
     if (equipoSet && !equipoSet.has(dict.equipo[equipoIdx])) return false;
     if (refSet && !refSet.has(dict.ref[refIdx])) return false;
+    if (operadorSet && !operadorSet.has(dict.operador[operadorIdx])) return false;
     if (monthSet && !monthSet.has(dayToYM(fecha, epoch))) return false;
     if (dFrom !== null && fecha < dFrom) return false;
     if (dTo !== null && fecha > dTo) return false;
@@ -52,11 +54,12 @@ function applyFilters(bundle, filters) {
   });
 
   const life = bundle.life.filter(l => {
-    const [, refIdx, , , , estadoIdx, , , , minaIdx, equipoIdx, fechaFinal] = l;
+    const [, refIdx, , , , estadoIdx, , , , minaIdx, equipoIdx, fechaFinal, , , operadorIdx] = l;
     if (minaSet && !minaSet.has(dict.mina[minaIdx])) return false;
     if (equipoSet && !equipoSet.has(dict.equipo[equipoIdx])) return false;
     if (refSet && !refSet.has(dict.ref[refIdx])) return false;
     if (estadoSet && !estadoSet.has(dict.estado[estadoIdx])) return false;
+    if (operadorSet && !operadorSet.has(dict.operador[operadorIdx])) return false;
     // Date/month filters only apply to pieces with a recorded discharge date;
     // pieces without one (still undated in the source) are always kept.
     if (fechaFinal !== null && fechaFinal !== undefined) {

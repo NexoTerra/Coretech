@@ -22,16 +22,17 @@ function bundleToRows(bundle) {
     ref_code, descripcion: c.d ?? null, precio: c.p ?? null, metro_garantizado: c.g ?? null, metro_aceptable: c.a ?? null,
   }));
   const prodRows = bundle.prod.map(p => {
-    const [fecha, minaIdx, tipoIdx, equipoIdx, refIdx, herrIdx, codigo_marcado, metros, esPrimario] = p;
+    const [fecha, minaIdx, tipoIdx, equipoIdx, refIdx, herrIdx, codigo_marcado, metros, esPrimario, operadorIdx] = p;
     return {
       fecha: dayToDateStr(fecha, bundle.meta.epoch),
       mina: d.mina[minaIdx] ?? null, tipo: d.tipo[tipoIdx] ?? null, equipo: d.equipo[equipoIdx] ?? null,
       ref_code: d.ref[refIdx] ?? null, herramienta: d.herr[herrIdx] ?? null,
       codigo_marcado, metros, es_primario: !!esPrimario,
+      operador: (d.operador && operadorIdx !== null && operadorIdx !== undefined) ? d.operador[operadorIdx] : null,
     };
   });
   const piezaRows = bundle.life.map(l => {
-    const [codigo_marcado, refIdx, herrIdx, mp, mg, estadoIdx, bucket, causaIdx, fallaIdx, minaIdx, equipoIdx, fechaFinal, usd, fechaInicio] = l;
+    const [codigo_marcado, refIdx, herrIdx, mp, mg, estadoIdx, bucket, causaIdx, fallaIdx, minaIdx, equipoIdx, fechaFinal, usd, fechaInicio, operadorIdx] = l;
     return {
       codigo_marcado, ref_code: d.ref[refIdx] ?? null, herramienta: d.herr[herrIdx] ?? null,
       metros_perforados: mp, metro_garantizado: mg ?? null,
@@ -41,6 +42,7 @@ function bundleToRows(bundle) {
       falla: (fallaIdx !== null && fallaIdx !== undefined) ? d.falla[fallaIdx] : null,
       mina: (minaIdx !== null && minaIdx !== undefined) ? d.mina[minaIdx] : null,
       equipo: (equipoIdx !== null && equipoIdx !== undefined) ? d.equipo[equipoIdx] : null,
+      operador: (d.operador && operadorIdx !== null && operadorIdx !== undefined) ? d.operador[operadorIdx] : null,
       fecha_inicio: (fechaInicio !== null && fechaInicio !== undefined) ? dayToDateStr(fechaInicio, bundle.meta.epoch) : null,
       fecha_final: (fechaFinal !== null && fechaFinal !== undefined) ? dayToDateStr(fechaFinal, bundle.meta.epoch) : null,
       precio_usd: usd ?? null,
@@ -56,7 +58,8 @@ function bundleToRows(bundle) {
 function rowsToBundle(rows, metaInfo) {
   const EPOCH = '2020-01-01';
   const D_mina = new Dict_(), D_tipo = new Dict_(), D_equipo = new Dict_(), D_ref = new Dict_(),
-        D_herr = new Dict_(), D_estado = new Dict_(), D_causa = new Dict_(), D_falla = new Dict_();
+        D_herr = new Dict_(), D_estado = new Dict_(), D_causa = new Dict_(), D_falla = new Dict_(),
+        D_operador = new Dict_();
   D_estado.get('RESERVA'); // disponible como filtro aunque nadie la tenga asignada
 
   const catalog = {};
@@ -67,6 +70,7 @@ function rowsToBundle(rows, metaInfo) {
   const prod = rows.prodRows.map(r => [
     dateStrToDay(r.fecha, EPOCH), D_mina.get(r.mina), D_tipo.get(r.tipo), D_equipo.get(r.equipo),
     D_ref.get(r.ref_code), D_herr.get(r.herramienta), r.codigo_marcado, Number(r.metros), r.es_primario ? 1 : 0,
+    D_operador.get(r.operador),
   ]);
 
   const life = rows.piezaRows.map(r => [
@@ -76,6 +80,7 @@ function rowsToBundle(rows, metaInfo) {
     r.causa ? D_causa.get(r.causa) : null, r.falla ? D_falla.get(r.falla) : null,
     D_mina.get(r.mina), D_equipo.get(r.equipo),
     dateStrToDay(r.fecha_final, EPOCH), numOrNull(r.precio_usd), dateStrToDay(r.fecha_inicio, EPOCH),
+    D_operador.get(r.operador),
   ]);
 
   const sartas = {};
@@ -86,7 +91,7 @@ function rowsToBundle(rows, metaInfo) {
 
   return {
     meta: { epoch: EPOCH, generated: metaInfo.generated, source: metaInfo.source },
-    dict: { mina: D_mina.items, tipo: D_tipo.items, equipo: D_equipo.items, ref: D_ref.items, herr: D_herr.items, estado: D_estado.items, causa: D_causa.items, falla: D_falla.items },
+    dict: { mina: D_mina.items, tipo: D_tipo.items, equipo: D_equipo.items, ref: D_ref.items, herr: D_herr.items, estado: D_estado.items, causa: D_causa.items, falla: D_falla.items, operador: D_operador.items },
     catalog, prod, life, sartas,
   };
 }

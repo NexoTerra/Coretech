@@ -383,6 +383,7 @@ const MARMATO_TOOL_COLS = [
 const CONTADOR_COLS = {
   fecha: ['FECHA DE REPORTE'], mina: ['MNA', 'MINA'], tipo: ['TIPO DE PERFORACION'],
   equipo: ['EQUIPO'], estado: ['ESTADO'], metros: ['TOTAL METROS'],
+  operador: ['OPERADOR DE EQUIPO', 'OPERADOR'],
 };
 const CODIGOS_ALFA_COLS = {
   cod: ['COD MARCADO'], refcode: ['REFERENCIA'], desc: ['DESCRIPCION'], fechaentrega: ['FECHA DE ENTREGA'],
@@ -391,7 +392,8 @@ const CODIGOS_ALFA_COLS = {
 function buildBundleFromMarmatoFormat(workbook, sourceName) {
   const EPOCH = '2020-01-01';
   const D_mina = new Dict_(), D_tipo = new Dict_(), D_equipo = new Dict_(), D_ref = new Dict_(),
-        D_herr = new Dict_(), D_estado = new Dict_(), D_causa = new Dict_(), D_falla = new Dict_();
+        D_herr = new Dict_(), D_estado = new Dict_(), D_causa = new Dict_(), D_falla = new Dict_(),
+        D_operador = new Dict_();
 
   const mgarSheet = findSheet(workbook, MGAR_SHEET_ALIASES);
   const contadorSheet = findSheet(workbook, CONTADOR_SHEET_ALIASES);
@@ -467,7 +469,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
 
   // 4. CONTADOR DE METROS -> melted production log
   const prod = [];
-  const pieceMeta = new Map(); // composite -> latest {fecha, equipo, estado, mina}
+  const pieceMeta = new Map(); // composite -> latest {fecha, equipo, estado, mina, operador}
   {
     const { headers, data } = sheetToRows(workbook, contadorSheet);
     const c = {}; for (const k in CONTADOR_COLS) c[k] = colIndex(headers, CONTADOR_COLS[k]);
@@ -482,6 +484,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
       const tipo = c.tipo >= 0 ? normUpper(row[c.tipo]) : null;
       const equipo = c.equipo >= 0 ? normUpper(row[c.equipo]) : null;
       const estado = c.estado >= 0 ? normUpper(row[c.estado]) : null;
+      const operador = c.operador >= 0 ? normUpper(row[c.operador]) : null;
       const metros = toNum(row[c.metros]);
 
       let primaryAssigned = false;
@@ -496,10 +499,10 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
         const isPrimary = primaryAssigned ? 0 : 1;
         primaryAssigned = true;
 
-        prod.push([fecha, D_mina.get(mina), D_tipo.get(tipo), D_equipo.get(equipo), D_ref.get(refcode), D_herr.get(desc), composite, Math.round(metros * 1000) / 1000, isPrimary]);
+        prod.push([fecha, D_mina.get(mina), D_tipo.get(tipo), D_equipo.get(equipo), D_ref.get(refcode), D_herr.get(desc), composite, Math.round(metros * 1000) / 1000, isPrimary, D_operador.get(operador)]);
 
         const prev = pieceMeta.get(composite);
-        if (!prev || fecha >= prev.fecha) pieceMeta.set(composite, { fecha, equipo, estado, mina });
+        if (!prev || fecha >= prev.fecha) pieceMeta.set(composite, { fecha, equipo, estado, mina, operador });
       }
     }
   }
@@ -530,12 +533,13 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
       composite, agg.refIdx, agg.herrIdx, Math.round(agg.metrosSum * 1000) / 1000, mg,
       D_estado.get(meta.estado || null), 'SIN_CAUSA', null, null,
       D_mina.get(meta.mina || null), D_equipo.get(meta.equipo || null), null, usd, fechaInicio,
+      D_operador.get(meta.operador || null),
     ]);
   }
 
   return {
     meta: { epoch: EPOCH, generated: new Date().toISOString().slice(0, 16).replace('T', ' '), source: sourceName },
-    dict: { mina: D_mina.items, tipo: D_tipo.items, equipo: D_equipo.items, ref: D_ref.items, herr: D_herr.items, estado: D_estado.items, causa: D_causa.items, falla: D_falla.items },
+    dict: { mina: D_mina.items, tipo: D_tipo.items, equipo: D_equipo.items, ref: D_ref.items, herr: D_herr.items, estado: D_estado.items, causa: D_causa.items, falla: D_falla.items, operador: D_operador.items },
     catalog, prod, life, sartas,
   };
 }

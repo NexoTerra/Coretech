@@ -10,7 +10,7 @@ const MINES = [
 function emptyBundle() {
   return {
     meta: { epoch: '2020-01-01', generated: '', source: '' },
-    dict: { mina: [], tipo: [], equipo: [], ref: [], herr: [], estado: [], causa: [], falla: [] },
+    dict: { mina: [], tipo: [], equipo: [], ref: [], herr: [], estado: [], causa: [], falla: [], operador: [] },
     catalog: {}, prod: [], life: [], sartas: {},
   };
 }
@@ -20,7 +20,7 @@ let currentMine = null;
 let presentationMode = false;
 let DEFAULT_BUNDLE = MINE_DEFAULT_BUNDLES.segovia;
 let BUNDLE = DEFAULT_BUNDLE;
-const EMPTY_FILTERS = () => ({ mina: [], tipo: [], equipo: [], ref: [], estado: [], sarta: [], months: [], dateFrom: null, dateTo: null });
+const EMPTY_FILTERS = () => ({ mina: [], tipo: [], equipo: [], ref: [], estado: [], sarta: [], operador: [], months: [], dateFrom: null, dateTo: null });
 let filters = EMPTY_FILTERS();
 let tableState = { tab: 'herramienta', sortKey: 'metros', sortDir: 'desc', search: '', page: 1 };
 const PAGE_SIZE = 20;
@@ -150,7 +150,7 @@ function populateFilterOptions() {
   const tipoOpts = d.tipo.slice().sort().map(v => ({ label: v, value: v }));
   searchDropdown('tipoBtn', 'tipoPanel', 'tipoSearch', 'tipoList', tipoOpts, 'tipo', 'Tipo de perforación');
 
-  const ESTADO_ORDER = ['ACTIVA', 'INACTIVA', 'RESERVA', 'NO PERTENECE'];
+  const ESTADO_ORDER = ['ACTIVA', 'INACTIVA', 'RESERVA'];
   const estadoOpts = d.estado.slice().sort((a, b) => {
     const ia = ESTADO_ORDER.indexOf(a), ib = ESTADO_ORDER.indexOf(b);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
@@ -164,6 +164,9 @@ function populateFilterOptions() {
 
   const equipoOpts = d.equipo.slice().sort().map(v => ({ label: v, value: v }));
   searchDropdown('equipoBtn', 'equipoPanel', 'equipoSearch', 'equipoList', equipoOpts, 'equipo', 'Equipo / Jumbo');
+
+  const operadorOpts = (d.operador || []).slice().sort().map(v => ({ label: v, value: v }));
+  searchDropdown('operadorBtn', 'operadorPanel', 'operadorSearch', 'operadorList', operadorOpts, 'operador', 'Operador');
 
   const refOpts = d.ref.map((code, i) => {
     const herrIdx = findHerrForRef(i);
