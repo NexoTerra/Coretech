@@ -93,10 +93,23 @@ async function setConciliacion(codigo, conciliado) {
 // ---------- Base de datos compartida (dataset importado desde Excel) ----------
 // Genérico a propósito: no conoce la forma del "bundle" del dashboard — eso
 // vive en datastore.js. Aquí solo se habla con Supabase.
+// Supabase/PostgREST limita cada respuesta a un máximo de filas (típicamente
+// 1000) sin importar cuántas existan realmente — sin esto, una tabla como
+// "producción" con miles de filas se leía truncada en silencio (sin error),
+// mostrando solo los primeros meses del archivo importado. Se pagina con
+// .range() hasta que una página vuelve más corta que el tamaño pedido.
 async function fetchTable(name) {
-  const { data, error } = await client.from(name).select('*');
-  if (error) throw error;
-  return data || [];
+  const PAGE = 1000;
+  let all = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await client.from(name).select('*').range(from, from + PAGE - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 
 // Reemplaza el contenido completo de una tabla (borra todo, luego inserta en
