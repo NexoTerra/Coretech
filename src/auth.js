@@ -97,17 +97,28 @@ async function setConciliacion(codigo, conciliado) {
 // 1000) sin importar cuántas existan realmente — sin esto, una tabla como
 // "producción" con miles de filas se leía truncada en silencio (sin error),
 // mostrando solo los primeros meses del archivo importado. Se pagina con
-// .range() hasta que una página vuelve más corta que el tamaño pedido.
+// .range() hasta agotar los datos reales. Primero se pregunta el total con
+// una consulta liviana (count, sin traer filas) y luego se piden todas las
+// páginas EN PARALELO en vez de una tras otra — con miles de filas, hacerlo
+// en serie tardaba unos 25 viajes de ida y vuelta seguidos (~30s); en
+// paralelo tarda aproximadamente lo mismo que un solo viaje.
 async function fetchTable(name) {
   const PAGE = 1000;
+  const { count, error: countError } = await client.from(name).select('*', { count: 'exact', head: true });
+  if (countError) throw countError;
+  const total = count || 0;
+  if (total === 0) return [];
+  const pageCount = Math.ceil(total / PAGE);
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, i) => {
+      const from = i * PAGE;
+      return client.from(name).select('*').range(from, from + PAGE - 1);
+    })
+  );
   let all = [];
-  let from = 0;
-  for (;;) {
-    const { data, error } = await client.from(name).select('*').range(from, from + PAGE - 1);
+  for (const { data, error } of pages) {
     if (error) throw error;
     all = all.concat(data || []);
-    if (!data || data.length < PAGE) break;
-    from += PAGE;
   }
   return all;
 }

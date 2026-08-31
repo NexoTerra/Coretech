@@ -855,6 +855,7 @@ function handleFile(file) {
     }
     try {
       await publishSharedBundle(newBundle, file.name);
+      cachedSharedBundle = newBundle;
       showImportStatus(`Listo: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}", guardado y visible para todos los usuarios.`, 'ok');
     } catch (pubErr) {
       showImportStatus(`Tu vista se actualizó, pero no se pudo guardar para los demás usuarios (${pubErr.message}). Vuelve a intentarlo.`, 'err');
@@ -983,10 +984,16 @@ function updateAuthUI() {
   document.getElementById('hubUserBadge').textContent = label;
   document.getElementById('importBtn').hidden = presentationMode || currentUser.role !== 'admin';
 }
+// Se guarda en memoria durante la sesión para que entrar y salir del módulo
+// varias veces no vuelva a traer todo desde Supabase cada vez — solo la
+// primera vez (o después de importar un Excel nuevo, que ya actualiza esto
+// directamente).
+let cachedSharedBundle = null;
 async function loadSharedBundleIntoApp() {
+  if (cachedSharedBundle) { BUNDLE = cachedSharedBundle; return; }
   try {
     const shared = await loadSharedBundle();
-    if (shared) BUNDLE = shared;
+    if (shared) { BUNDLE = shared; cachedSharedBundle = shared; }
   } catch (e) { /* se queda con el bundle base embebido */ }
 }
 function showScreen(name) {
