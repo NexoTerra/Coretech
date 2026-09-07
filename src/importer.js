@@ -363,10 +363,9 @@ function buildBundleFromLongFormat(workbook, sourceName) {
 // ---------- "Marmato" workbook: MGAR / CONTADOR DE METROS / CODIGOS ALFA NUMERICOS / SARTAS ----------
 // CONTADOR DE METROS is the source of truth (BD is just an automatic melt of
 // it in this workbook and has a REFERENCIA lookup gap, so it's bypassed
-// entirely). Pieces are reconstructed by aggregating each code's rows;
-// ESTADO comes from that piece's most recent report (ACTIVA/INACTIVA/NO
-// PERTENECE, whatever literally appears — no reclassification). RESERVA is
-// added as an available filter value but deliberately left unassigned.
+// entirely). Pieces are reconstructed by aggregating each code's rows.
+// ESTADO siempre viene de TOTALIZADOR (columna ESTADO) — CONTADOR DE METROS
+// no trae esa columna en este formato, así que es la única fuente confiable.
 // SARTAS maps a sarta name to its component referencias (by description,
 // resolved through CODIGOS ALFA NUMERICOS / MGAR).
 const MGAR_SHEET_ALIASES = ['MGAR'];
@@ -380,8 +379,16 @@ const DATOS_KPIS_COLS = {
 const TOTALIZADOR_SHEET_ALIASES = ['TOTALIZADOR'];
 const TOTALIZADOR_COLS = {
   codigo: ['CODIGO INTERNO'], fechaDescarte: ['FECHA DE DESCARTE'],
-  modo: ['MODO DE DESCARTE'], causa: ['CAUSA DE DESCARTE'],
+  modo: ['MODO DE DESCARTE'], causa: ['CAUSA DE DESCARTE'], estado: ['ESTADO'],
 };
+// TOTALIZADOR usa las formas masculinas ACTIVO/INACTIVO ("herramienta"); el
+// resto del código (agg.js, ui.js) usa las femeninas ACTIVA/INACTIVA como
+// vocabulario canónico ("pieza"). Se normalizan al leerlas; RESERVA no cambia.
+const ESTADO_ALIASES = { ACTIVO: 'ACTIVA', INACTIVO: 'INACTIVA' };
+function normalizeEstado(v) {
+  const s = normUpper(v);
+  return s ? (ESTADO_ALIASES[s] || s) : null;
+}
 
 const MARMATO_TOOL_COLS = [
   ['SHANK', ['SHANK'], ['DESCRIP SHANK']],
@@ -391,7 +398,7 @@ const MARMATO_TOOL_COLS = [
 ];
 const CONTADOR_COLS = {
   fecha: ['FECHA DE REPORTE'], mina: ['MNA', 'MINA'], tipo: ['TIPO DE PERFORACION'],
-  equipo: ['EQUIPO'], estado: ['ESTADO'], metros: ['TOTAL METROS'],
+  equipo: ['EQUIPO'], metros: ['TOTAL METROS'],
   operador: ['OPERADOR DE EQUIPO', 'OPERADOR'],
 };
 const CODIGOS_ALFA_COLS = {
@@ -499,11 +506,10 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
     }
   }
 
-  // 3.6 TOTALIZADOR: por código, la fecha real de baja (comprobante de que la
-  // pieza ya terminó su vida útil — no el campo ESTADO, que puede estar mal
-  // mientras el cliente termina de migrar sus datos) más modo/causa de
-  // descarte cuando existan. Mientras esas columnas sigan vacías en el
-  // archivo, esto simplemente no aporta nada todavía (a propósito).
+  // 3.6 TOTALIZADOR: por código, el ESTADO real de la pieza (ACTIVO/INACTIVO/
+  // RESERVA, normalizado a ACTIVA/INACTIVA/RESERVA) siempre se toma de aquí —
+  // CONTADOR DE METROS no trae columna ESTADO en este formato. También la
+  // fecha real de baja, y modo/causa de descarte cuando existan.
   const totalizadorByCode = new Map();
   if (totalizadorSheet) {
     const { headers, data } = sheetToRows(workbook, totalizadorSheet);
@@ -514,14 +520,15 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
       const fechaDescarte = c.fechaDescarte >= 0 ? excelDateToDayNum(row[c.fechaDescarte], EPOCH) : null;
       const modo = c.modo >= 0 ? norm(row[c.modo]) : null;
       const causa = c.causa >= 0 ? norm(row[c.causa]) : null;
-      if (fechaDescarte === null && !modo && !causa) continue;
-      totalizadorByCode.set(codigo, { fechaDescarte, modo, causa });
+      const estado = c.estado >= 0 ? normalizeEstado(row[c.estado]) : null;
+      if (fechaDescarte === null && !modo && !causa && !estado) continue;
+      totalizadorByCode.set(codigo, { fechaDescarte, modo, causa, estado });
     }
   }
 
   // 4. CONTADOR DE METROS -> melted production log
   const prod = [];
-  const pieceMeta = new Map(); // composite -> latest {fecha, equipo, estado, mina, operador}
+  const pieceMeta = new Map(); // composite -> latest {fecha, equipo, mina, operador}
   {
     const { headers, data } = sheetToRows(workbook, contadorSheet);
     const c = {}; for (const k in CONTADOR_COLS) c[k] = colIndex(headers, CONTADOR_COLS[k]);
@@ -535,7 +542,6 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
       const mina = c.mina >= 0 ? cleanMina(row[c.mina]) : null;
       const tipo = c.tipo >= 0 ? normUpper(row[c.tipo]) : null;
       const equipo = c.equipo >= 0 ? normUpper(row[c.equipo]) : null;
-      const estado = c.estado >= 0 ? normUpper(row[c.estado]) : null;
       const operador = c.operador >= 0 ? normUpper(row[c.operador]) : null;
       const metros = toNum(row[c.metros]);
 
@@ -554,7 +560,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
         prod.push([fecha, D_mina.get(mina), D_tipo.get(tipo), D_equipo.get(equipo), D_ref.get(refcode), D_herr.get(desc), composite, Math.round(metros * 1000) / 1000, isPrimary, D_operador.get(operador)]);
 
         const prev = pieceMeta.get(composite);
-        if (!prev || fecha >= prev.fecha) pieceMeta.set(composite, { fecha, equipo, estado, mina, operador });
+        if (!prev || fecha >= prev.fecha) pieceMeta.set(composite, { fecha, equipo, mina, operador });
       }
     }
   }
@@ -568,8 +574,6 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
     e.metrosSum += metros;
     if (e.refIdx === null || e.refIdx === undefined) e.refIdx = refIdx;
   }
-  D_estado.get('RESERVA'); // available as a filter value; deliberately left unassigned
-
   const life = [];
   for (const [composite, agg] of pieceAgg.entries()) {
     const meta = pieceMeta.get(composite) || {};
@@ -585,7 +589,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
 
     life.push([
       composite, agg.refIdx, agg.herrIdx, Math.round(agg.metrosSum * 1000) / 1000, mg,
-      D_estado.get(meta.estado || null), bucket,
+      D_estado.get(tot ? tot.estado : null), bucket,
       tot && tot.causa ? D_causa.get(tot.causa) : null,
       tot && tot.modo ? D_falla.get(tot.modo) : null,
       D_mina.get(meta.mina || null), D_equipo.get(meta.equipo || null),
