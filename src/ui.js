@@ -371,10 +371,10 @@ function describeCpmPorSarta(sartaTotals) {
   if (peor.pct > 1) txt += ` La más alejada de su ideal es ${peor.sarta} (+${peor.pct.toFixed(0)}%).`;
   return txt;
 }
-function renderCpmPorSarta(bundle, prod) {
+function renderCpmPorSarta(bundle, life) {
   const chartEl = document.getElementById('chartCpmSarta');
   const conclusionEl = document.getElementById('cpmSartaConclusion');
-  let sartaTotals = cpmPorSartaTotal(bundle, prod);
+  let sartaTotals = cpmPorSartaTotal(bundle, life);
   if (!sartaTotals.length) {
     chartEl.innerHTML = '<div class="empty-note">Este archivo no trae la hoja SARTAS.</div>';
     conclusionEl.textContent = '';
@@ -432,12 +432,12 @@ function renderMetrosPorCodigo(bundle, life) {
 }
 
 // ============ Promedio mensual de metros por referencia ============
-function renderPromedioReferencia(bundle, prod) {
+function renderPromedioReferencia(bundle, prod, life) {
   const d = bundle.dict;
   const chartEl = document.getElementById('chartPromedioReferencia');
   const table = document.getElementById('promedioReferenciaTable');
   const totals = byHerramientaProd(bundle, prod, null).sort((a, b) => b.metros - a.metros).slice(0, 8);
-  const avgByRef = avgMetrosPorReferenciaPorMes(bundle);
+  const avgByRef = avgMetrosPorReferenciaPorMes(bundle, life);
   const monthSet = new Set();
   totals.forEach(t => {
     const byYm = avgByRef.get(d.ref.indexOf(t.ref));
@@ -524,9 +524,9 @@ function describeCpmTrend(sartaRows, months) {
   return txt;
 }
 
-function renderCPMTrend(bundle, prod) {
+function renderCPMTrend(bundle, life) {
   const section = document.getElementById('cpmTrendSection');
-  let sartaRows = cpmPorSarta(bundle, prod);
+  let sartaRows = cpmPorSarta(bundle, life);
   if (!sartaRows.length) {
     section.innerHTML = '<div class="empty-note">Este archivo no trae la hoja SARTAS.</div>';
     return;
@@ -790,7 +790,7 @@ function renderTable(prod, life) {
 function renderMeta(kpis) {
   const months = kpis.months;
   const range = months.length ? `${ymLabel(months[0])} – ${ymLabel(months[months.length - 1])}` : 'sin datos';
-  document.getElementById('subtitle').textContent = `Rango de datos: ${range} · ${fmtNum(BUNDLE.prod.length)} registros diarios · ${fmtNum(BUNDLE.life.length)} piezas en el ciclo de vida`;
+  document.getElementById('subtitle').textContent = `Rango de datos: ${range} · ${fmtNum(currentProd.length)} registros diarios · ${fmtNum(currentLife.length)} piezas en el ciclo de vida`;
   document.getElementById('footerMeta').textContent = `Fuente activa: ${BUNDLE.meta.source || '—'} · generado ${BUNDLE.meta.generated || '—'}.`;
 }
 
@@ -808,11 +808,11 @@ function renderAll() {
   renderCumplimientoTrend(BUNDLE, life);
   renderMotivo(motivoBaja(BUNDLE, life));
   renderFallaCausa(BUNDLE, life);
-  renderCpmPorSarta(BUNDLE, prod);
+  renderCpmPorSarta(BUNDLE, life);
   renderMetrosPorCodigo(BUNDLE, life);
-  renderPromedioReferencia(BUNDLE, prod);
+  renderPromedioReferencia(BUNDLE, prod, life);
   renderCPM(BUNDLE, life);
-  renderCPMTrend(BUNDLE, prod);
+  renderCPMTrend(BUNDLE, life);
   renderGananciaPerdida(BUNDLE, life);
   tableState.page = 1;
   renderTable(prod, life);

@@ -124,7 +124,10 @@ function kpiTotals(bundle, prod, life) {
 
   // rendimiento global (piezas usadas y de ciclo cerrado)
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
+  // "Cerrada" = específicamente INACTIVO (ya se dio de baja), no "distinto de
+  // ACTIVO" — eso último también contaría como cerrada una pieza en RESERVA o
+  // todavía sin clasificar en TOTALIZADOR, que no es lo mismo que retirada.
+  const closed = used.filter(l => dict.estado[l[5]] === 'INACTIVO');
   const ratios = closed.filter(l => l[4]).map(l => l[3] / l[4]);
   const cumplimientoGlobal = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length * 100 : null;
 
@@ -172,7 +175,10 @@ function byHerramientaProd(bundle, prod, topN) {
 function rendimientoPorHerramienta(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
+  // "Cerrada" = específicamente INACTIVO (ya se dio de baja), no "distinto de
+  // ACTIVO" — eso último también contaría como cerrada una pieza en RESERVA o
+  // todavía sin clasificar en TOTALIZADOR, que no es lo mismo que retirada.
+  const closed = used.filter(l => dict.estado[l[5]] === 'INACTIVO');
   const map = new Map(); // refIdx -> {n, mpSum, mgSum, ratios:[], superaCount}
   for (const l of closed) {
     const [, refIdx, herrIdx, mp, mg] = l;
@@ -197,7 +203,10 @@ function rendimientoPorHerramienta(bundle, life) {
 function motivoBaja(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
+  // "Cerrada" = específicamente INACTIVO (ya se dio de baja), no "distinto de
+  // ACTIVO" — eso último también contaría como cerrada una pieza en RESERVA o
+  // todavía sin clasificar en TOTALIZADOR, que no es lo mismo que retirada.
+  const closed = used.filter(l => dict.estado[l[5]] === 'INACTIVO');
   const buckets = {};
   for (const l of closed) {
     const bucket = l[6];
@@ -281,7 +290,10 @@ function cpmGlobal(bundle, life) {
 function causaBreakdown(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
+  // "Cerrada" = específicamente INACTIVO (ya se dio de baja), no "distinto de
+  // ACTIVO" — eso último también contaría como cerrada una pieza en RESERVA o
+  // todavía sin clasificar en TOTALIZADOR, que no es lo mismo que retirada.
+  const closed = used.filter(l => dict.estado[l[5]] === 'INACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, , , mp, mg, , , causaIdx] = l;
@@ -311,7 +323,10 @@ function causaBreakdown(bundle, life) {
 function fallaBreakdown(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
+  // "Cerrada" = específicamente INACTIVO (ya se dio de baja), no "distinto de
+  // ACTIVO" — eso último también contaría como cerrada una pieza en RESERVA o
+  // todavía sin clasificar en TOTALIZADOR, que no es lo mismo que retirada.
+  const closed = used.filter(l => dict.estado[l[5]] === 'INACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, , , mp, mg, , , , fallaIdx] = l;
@@ -334,7 +349,10 @@ function fallaBreakdown(bundle, life) {
 function vidaUtilGlobal(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
+  // "Cerrada" = específicamente INACTIVO (ya se dio de baja), no "distinto de
+  // ACTIVO" — eso último también contaría como cerrada una pieza en RESERVA o
+  // todavía sin clasificar en TOTALIZADOR, que no es lo mismo que retirada.
+  const closed = used.filter(l => dict.estado[l[5]] === 'INACTIVO');
   const dias = [];
   for (const l of closed) {
     const fechaFinal = l[11], fechaInicio = l[13];
@@ -361,7 +379,10 @@ function vidaUtilGlobal(bundle, life) {
 function vidaUtilPorHerramienta(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
+  // "Cerrada" = específicamente INACTIVO (ya se dio de baja), no "distinto de
+  // ACTIVO" — eso último también contaría como cerrada una pieza en RESERVA o
+  // todavía sin clasificar en TOTALIZADOR, que no es lo mismo que retirada.
+  const closed = used.filter(l => dict.estado[l[5]] === 'INACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, refIdx, herrIdx, mp, , , , , , , , fechaFinal, , fechaInicio] = l;
@@ -385,7 +406,10 @@ function cumplimientoPorMes(bundle, life) {
   const { dict } = bundle;
   const epoch = bundle.meta.epoch || EPOCH_DEFAULT;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
+  // "Cerrada" = específicamente INACTIVO (ya se dio de baja), no "distinto de
+  // ACTIVO" — eso último también contaría como cerrada una pieza en RESERVA o
+  // todavía sin clasificar en TOTALIZADOR, que no es lo mismo que retirada.
+  const closed = used.filter(l => dict.estado[l[5]] === 'INACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, , , mp, mg, , , , , , , fechaFinal] = l;
@@ -441,11 +465,11 @@ function cpmTrend(bundle, life) {
 // baja, no el de cada reporte de producción: una pieza puede haber perforado en
 // varios meses distintos antes de terminar su vida útil, y lo que se compara
 // contra el CPM ideal es su rendimiento total el mes en que se cerró su ciclo.
-function avgMetrosPorReferenciaPorMes(bundle) {
+function avgMetrosPorReferenciaPorMes(bundle, life) {
   const epoch = bundle.meta.epoch || EPOCH_DEFAULT;
   // refIdx -> ym (mes de la fecha de baja) -> [metros totales de cada pieza]
   const acc = new Map();
-  for (const l of bundle.life) {
+  for (const l of life) {
     const [, refIdx, , mp, , , , , , , , fechaFinal] = l;
     if (refIdx === null || refIdx === undefined) continue;
     if (fechaFinal === null || fechaFinal === undefined) continue;
@@ -472,9 +496,9 @@ function avgMetrosPorReferenciaPorMes(bundle) {
 // Una sarta agrupa varias referencias (bundle.sartas); el CPM de cada referencia
 // usa su propio promedio mensual de metros sin importar que la referencia se
 // repita en otra sarta (precio y promedio son siempre por referencia, no por sarta).
-function cpmPorSarta(bundle, prod) {
+function cpmPorSarta(bundle, life) {
   const { dict, catalog } = bundle;
-  const avgByRef = avgMetrosPorReferenciaPorMes(bundle);
+  const avgByRef = avgMetrosPorReferenciaPorMes(bundle, life);
   const sartas = bundle.sartas || {};
   const out = [];
   for (const [sartaNombre, refcodes] of Object.entries(sartas)) {
@@ -501,8 +525,8 @@ function cpmPorSarta(bundle, prod) {
 // El CPM ideal de cada sarta es un valor fijo (bundle.cpmIdealPorSarta, viene de
 // la hoja DATOS KPIs — ya es la suma de los CPM individuales de sus referencias)
 // que sirve de referencia para comparar contra el CPM real mes a mes.
-function cpmPorSartaTotal(bundle, prod) {
-  const porSarta = cpmPorSarta(bundle, prod);
+function cpmPorSartaTotal(bundle, life) {
+  const porSarta = cpmPorSarta(bundle, life);
   const cpmIdealMap = bundle.cpmIdealPorSarta || {};
   return porSarta.map(s => {
     const monthMap = new Map(); // ym -> {suma, refsConDatos}
