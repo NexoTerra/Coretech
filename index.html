@@ -696,8 +696,9 @@ footer b{color:var(--text-dim);}
           aceptable, por encima de 100% supera la garantía.</dd>
 
         <dt>Estado</dt>
-        <dd>Situación actual de una pieza según su reporte más reciente: <b>Activa</b> (en uso), <b>Inactiva</b>
-          (fuera de servicio) o <b>Reserva</b> (disponible sin usar).</dd>
+        <dd>Situación actual de una pieza, según la hoja TOTALIZADOR: <b>Activo</b> (en uso), <b>Inactivo</b>
+          (fuera de servicio) o <b>Reserva</b> (disponible sin usar). Puede estar vacío para piezas que aún no
+          se han clasificado ahí.</dd>
 
         <dt>Operador</dt>
         <dd>Persona que operaba el equipo en el reporte más reciente de esa pieza.</dd>
@@ -894,7 +895,7 @@ function kpiTotals(bundle, prod, life) {
 
   // rendimiento global (piezas usadas y de ciclo cerrado)
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const ratios = closed.filter(l => l[4]).map(l => l[3] / l[4]);
   const cumplimientoGlobal = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length * 100 : null;
 
@@ -942,7 +943,7 @@ function byHerramientaProd(bundle, prod, topN) {
 function rendimientoPorHerramienta(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const map = new Map(); // refIdx -> {n, mpSum, mgSum, ratios:[], superaCount}
   for (const l of closed) {
     const [, refIdx, herrIdx, mp, mg] = l;
@@ -967,7 +968,7 @@ function rendimientoPorHerramienta(bundle, life) {
 function motivoBaja(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const buckets = {};
   for (const l of closed) {
     const bucket = l[6];
@@ -1051,7 +1052,7 @@ function cpmGlobal(bundle, life) {
 function causaBreakdown(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, , , mp, mg, , , causaIdx] = l;
@@ -1081,7 +1082,7 @@ function causaBreakdown(bundle, life) {
 function fallaBreakdown(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, , , mp, mg, , , , fallaIdx] = l;
@@ -1104,7 +1105,7 @@ function fallaBreakdown(bundle, life) {
 function vidaUtilGlobal(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const dias = [];
   for (const l of closed) {
     const fechaFinal = l[11], fechaInicio = l[13];
@@ -1131,7 +1132,7 @@ function vidaUtilGlobal(bundle, life) {
 function vidaUtilPorHerramienta(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, refIdx, herrIdx, mp, , , , , , , , fechaFinal, , fechaInicio] = l;
@@ -1155,7 +1156,7 @@ function cumplimientoPorMes(bundle, life) {
   const { dict } = bundle;
   const epoch = bundle.meta.epoch || EPOCH_DEFAULT;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, , , mp, mg, , , , , , , fechaFinal] = l;
@@ -1762,7 +1763,7 @@ const DATOS_KPIS_COLS = {
 const TOTALIZADOR_SHEET_ALIASES = ['TOTALIZADOR'];
 const TOTALIZADOR_COLS = {
   codigo: ['CODIGO INTERNO'], fechaDescarte: ['FECHA DE DESCARTE'],
-  modo: ['MODO DE DESCARTE'], causa: ['CAUSA DE DESCARTE'],
+  modo: ['MODO DE DESCARTE'], causa: ['CAUSA DE DESCARTE'], estado: ['ESTADO'],
 };
 
 const MARMATO_TOOL_COLS = [
@@ -1882,10 +1883,12 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
   }
 
   // 3.6 TOTALIZADOR: por código, la fecha real de baja (comprobante de que la
-  // pieza ya terminó su vida útil — no el campo ESTADO, que puede estar mal
-  // mientras el cliente termina de migrar sus datos) más modo/causa de
-  // descarte cuando existan. Mientras esas columnas sigan vacías en el
-  // archivo, esto simplemente no aporta nada todavía (a propósito).
+  // pieza ya terminó su vida útil — el CPM sigue sin usar el campo ESTADO,
+  // por instrucción explícita del cliente) más modo/causa de descarte cuando
+  // existan. El ESTADO de la pieza (Activo/Inactivo/Reserva) también vive en
+  // esta hoja desde que se retiró esa columna de CONTADOR DE METROS — es la
+  // única fuente para el filtro de Estado. Mientras estas columnas sigan
+  // vacías para una pieza, esto simplemente no aporta nada todavía para ella.
   const totalizadorByCode = new Map();
   if (totalizadorSheet) {
     const { headers, data } = sheetToRows(workbook, totalizadorSheet);
@@ -1896,8 +1899,9 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
       const fechaDescarte = c.fechaDescarte >= 0 ? excelDateToDayNum(row[c.fechaDescarte], EPOCH) : null;
       const modo = c.modo >= 0 ? norm(row[c.modo]) : null;
       const causa = c.causa >= 0 ? norm(row[c.causa]) : null;
-      if (fechaDescarte === null && !modo && !causa) continue;
-      totalizadorByCode.set(codigo, { fechaDescarte, modo, causa });
+      const estado = c.estado >= 0 ? normUpper(row[c.estado]) : null;
+      if (fechaDescarte === null && !modo && !causa && !estado) continue;
+      totalizadorByCode.set(codigo, { fechaDescarte, modo, causa, estado });
     }
   }
 
@@ -1967,7 +1971,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
 
     life.push([
       composite, agg.refIdx, agg.herrIdx, Math.round(agg.metrosSum * 1000) / 1000, mg,
-      D_estado.get(meta.estado || null), bucket,
+      D_estado.get((tot && tot.estado) || meta.estado || null), bucket,
       tot && tot.causa ? D_causa.get(tot.causa) : null,
       tot && tot.modo ? D_falla.get(tot.modo) : null,
       D_mina.get(meta.mina || null), D_equipo.get(meta.equipo || null),
@@ -2740,7 +2744,7 @@ function populateFilterOptions() {
   const tipoOpts = d.tipo.slice().sort().map(v => ({ label: v, value: v }));
   searchDropdown('tipoBtn', 'tipoPanel', 'tipoSearch', 'tipoList', tipoOpts, 'tipo', 'Tipo de perforación');
 
-  const ESTADO_ORDER = ['ACTIVA', 'INACTIVA', 'RESERVA'];
+  const ESTADO_ORDER = ['ACTIVO', 'INACTIVO', 'RESERVA'];
   const estadoOpts = d.estado.slice().sort((a, b) => {
     const ia = ESTADO_ORDER.indexOf(a), ib = ESTADO_ORDER.indexOf(b);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);

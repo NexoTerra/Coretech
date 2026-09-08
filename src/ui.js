@@ -150,7 +150,7 @@ function populateFilterOptions() {
   const tipoOpts = d.tipo.slice().sort().map(v => ({ label: v, value: v }));
   searchDropdown('tipoBtn', 'tipoPanel', 'tipoSearch', 'tipoList', tipoOpts, 'tipo', 'Tipo de perforación');
 
-  const ESTADO_ORDER = ['ACTIVA', 'INACTIVA', 'RESERVA'];
+  const ESTADO_ORDER = ['ACTIVO', 'INACTIVO', 'RESERVA'];
   const estadoOpts = d.estado.slice().sort((a, b) => {
     const ia = ESTADO_ORDER.indexOf(a), ib = ESTADO_ORDER.indexOf(b);
     return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);

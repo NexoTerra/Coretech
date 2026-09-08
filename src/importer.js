@@ -380,7 +380,7 @@ const DATOS_KPIS_COLS = {
 const TOTALIZADOR_SHEET_ALIASES = ['TOTALIZADOR'];
 const TOTALIZADOR_COLS = {
   codigo: ['CODIGO INTERNO'], fechaDescarte: ['FECHA DE DESCARTE'],
-  modo: ['MODO DE DESCARTE'], causa: ['CAUSA DE DESCARTE'],
+  modo: ['MODO DE DESCARTE'], causa: ['CAUSA DE DESCARTE'], estado: ['ESTADO'],
 };
 
 const MARMATO_TOOL_COLS = [
@@ -500,10 +500,12 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
   }
 
   // 3.6 TOTALIZADOR: por código, la fecha real de baja (comprobante de que la
-  // pieza ya terminó su vida útil — no el campo ESTADO, que puede estar mal
-  // mientras el cliente termina de migrar sus datos) más modo/causa de
-  // descarte cuando existan. Mientras esas columnas sigan vacías en el
-  // archivo, esto simplemente no aporta nada todavía (a propósito).
+  // pieza ya terminó su vida útil — el CPM sigue sin usar el campo ESTADO,
+  // por instrucción explícita del cliente) más modo/causa de descarte cuando
+  // existan. El ESTADO de la pieza (Activo/Inactivo/Reserva) también vive en
+  // esta hoja desde que se retiró esa columna de CONTADOR DE METROS — es la
+  // única fuente para el filtro de Estado. Mientras estas columnas sigan
+  // vacías para una pieza, esto simplemente no aporta nada todavía para ella.
   const totalizadorByCode = new Map();
   if (totalizadorSheet) {
     const { headers, data } = sheetToRows(workbook, totalizadorSheet);
@@ -514,8 +516,9 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
       const fechaDescarte = c.fechaDescarte >= 0 ? excelDateToDayNum(row[c.fechaDescarte], EPOCH) : null;
       const modo = c.modo >= 0 ? norm(row[c.modo]) : null;
       const causa = c.causa >= 0 ? norm(row[c.causa]) : null;
-      if (fechaDescarte === null && !modo && !causa) continue;
-      totalizadorByCode.set(codigo, { fechaDescarte, modo, causa });
+      const estado = c.estado >= 0 ? normUpper(row[c.estado]) : null;
+      if (fechaDescarte === null && !modo && !causa && !estado) continue;
+      totalizadorByCode.set(codigo, { fechaDescarte, modo, causa, estado });
     }
   }
 
@@ -585,7 +588,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
 
     life.push([
       composite, agg.refIdx, agg.herrIdx, Math.round(agg.metrosSum * 1000) / 1000, mg,
-      D_estado.get(meta.estado || null), bucket,
+      D_estado.get((tot && tot.estado) || meta.estado || null), bucket,
       tot && tot.causa ? D_causa.get(tot.causa) : null,
       tot && tot.modo ? D_falla.get(tot.modo) : null,
       D_mina.get(meta.mina || null), D_equipo.get(meta.equipo || null),

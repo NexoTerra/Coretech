@@ -112,7 +112,7 @@ function kpiTotals(bundle, prod, life) {
 
   // rendimiento global (piezas usadas y de ciclo cerrado)
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const ratios = closed.filter(l => l[4]).map(l => l[3] / l[4]);
   const cumplimientoGlobal = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length * 100 : null;
 
@@ -160,7 +160,7 @@ function byHerramientaProd(bundle, prod, topN) {
 function rendimientoPorHerramienta(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const map = new Map(); // refIdx -> {n, mpSum, mgSum, ratios:[], superaCount}
   for (const l of closed) {
     const [, refIdx, herrIdx, mp, mg] = l;
@@ -185,7 +185,7 @@ function rendimientoPorHerramienta(bundle, life) {
 function motivoBaja(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const buckets = {};
   for (const l of closed) {
     const bucket = l[6];
@@ -269,7 +269,7 @@ function cpmGlobal(bundle, life) {
 function causaBreakdown(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, , , mp, mg, , , causaIdx] = l;
@@ -299,7 +299,7 @@ function causaBreakdown(bundle, life) {
 function fallaBreakdown(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, , , mp, mg, , , , fallaIdx] = l;
@@ -322,7 +322,7 @@ function fallaBreakdown(bundle, life) {
 function vidaUtilGlobal(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const dias = [];
   for (const l of closed) {
     const fechaFinal = l[11], fechaInicio = l[13];
@@ -349,7 +349,7 @@ function vidaUtilGlobal(bundle, life) {
 function vidaUtilPorHerramienta(bundle, life) {
   const { dict } = bundle;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, refIdx, herrIdx, mp, , , , , , , , fechaFinal, , fechaInicio] = l;
@@ -373,7 +373,7 @@ function cumplimientoPorMes(bundle, life) {
   const { dict } = bundle;
   const epoch = bundle.meta.epoch || EPOCH_DEFAULT;
   const used = life.filter(l => l[3] > 0);
-  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVA');
+  const closed = used.filter(l => dict.estado[l[5]] !== 'ACTIVO');
   const map = new Map();
   for (const l of closed) {
     const [, , , mp, mg, , , , , , , fechaFinal] = l;
