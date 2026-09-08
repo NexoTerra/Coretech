@@ -438,7 +438,12 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
     const { headers, data } = sheetToRows(workbook, codigosSheet);
     const c = {}; for (const k in CODIGOS_ALFA_COLS) c[k] = colIndex(headers, CODIGOS_ALFA_COLS[k]);
     for (const row of data) {
-      const code = norm(row[c.cod]);
+      // El código interno es la identidad de la pieza en todo el archivo (aquí,
+      // en CONTADOR y en TOTALIZADOR) — se normaliza a mayúsculas porque el
+      // mismo código a veces aparece en minúscula en algún reporte suelto de
+      // CONTADOR, lo que sin esto crea una pieza fantasma distinta ("y299" vs
+      // "Y299") con una parte de los metros reales de la pieza.
+      const code = normUpper(row[c.cod]);
       if (!code) continue;
       const refcode = normRef(row[c.refcode]);
       const desc = c.desc >= 0 ? norm(row[c.desc]) : null;
@@ -511,7 +516,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
     const { headers, data } = sheetToRows(workbook, totalizadorSheet);
     const c = {}; for (const k in TOTALIZADOR_COLS) c[k] = colIndex(headers, TOTALIZADOR_COLS[k]);
     for (const row of data) {
-      const codigo = c.codigo >= 0 ? norm(row[c.codigo]) : null;
+      const codigo = c.codigo >= 0 ? normUpper(row[c.codigo]) : null;
       if (!codigo) continue;
       const fechaDescarte = c.fechaDescarte >= 0 ? excelDateToDayNum(row[c.fechaDescarte], EPOCH) : null;
       const modo = c.modo >= 0 ? norm(row[c.modo]) : null;
@@ -545,7 +550,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
       let primaryAssigned = false;
       for (const [cat, codeIdx, descIdx] of toolCols) {
         if (codeIdx < 0) continue;
-        const code = norm(row[codeIdx]);
+        const code = normUpper(row[codeIdx]);
         if (!code) continue;
         const meta = codeMap.get(code);
         const refcode = meta ? meta.refcode : null;
