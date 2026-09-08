@@ -823,12 +823,24 @@ function applyFilters(bundle, filters) {
   const dFrom = (!monthSet && filters.dateFrom) ? Math.floor((new Date(filters.dateFrom + 'T00:00:00Z') - new Date(epoch + 'T00:00:00Z')) / 86400000) : null;
   const dTo = (!monthSet && filters.dateTo) ? Math.floor((new Date(filters.dateTo + 'T00:00:00Z') - new Date(epoch + 'T00:00:00Z')) / 86400000) : null;
 
+  // Un registro de "prod" (reporte de producción) no trae su propio Estado —
+  // esa es una propiedad de la pieza (vive en "life", viene de TOTALIZADOR).
+  // Para que el filtro de Estado también afecte las gráficas basadas en prod
+  // (la mayoría) hay que resolver el Estado de cada pieza por su código y
+  // aplicarlo aquí también, no solo al filtrar life.
+  let estadoByCode = null;
+  if (estadoSet) {
+    estadoByCode = new Map();
+    for (const l of bundle.life) estadoByCode.set(l[0], dict.estado[l[5]]);
+  }
+
   const prod = bundle.prod.filter(p => {
-    const [fecha, minaIdx, tipoIdx, equipoIdx, refIdx, , , , , operadorIdx] = p;
+    const [fecha, minaIdx, tipoIdx, equipoIdx, refIdx, , cm, , , operadorIdx] = p;
     if (minaSet && !minaSet.has(dict.mina[minaIdx])) return false;
     if (tipoSet && !tipoSet.has(dict.tipo[tipoIdx])) return false;
     if (equipoSet && !equipoSet.has(dict.equipo[equipoIdx])) return false;
     if (refSet && !refSet.has(dict.ref[refIdx])) return false;
+    if (estadoSet && !estadoSet.has(estadoByCode.get(cm))) return false;
     if (operadorSet && !operadorSet.has(dict.operador[operadorIdx])) return false;
     if (monthSet && !monthSet.has(dayToYM(fecha, epoch))) return false;
     if (dFrom !== null && fecha < dFrom) return false;
