@@ -550,7 +550,15 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
         const meta = codeMap.get(code);
         const refcode = meta ? meta.refcode : null;
         const desc = meta ? meta.desc : null;
-        const composite = cat + ':' + code;
+        // La identidad de la pieza es el código interno solo (igual que en
+        // CODIGOS ALFA NUMERICOS y TOTALIZADOR, que ya lo tratan como único
+        // globalmente) — no "categoría:código". Un mismo código a veces queda
+        // registrado bajo la columna de otra categoría en algún reporte suelto
+        // de CONTADOR; usar "cat:code" como identidad partía esa pieza en dos
+        // piezas separadas (una con casi todos sus metros, otra con un resto
+        // mínimo), inflando el conteo de piezas sin inflar apenas los metros —
+        // eso es justo lo que distorsionaba el promedio mensual por referencia.
+        const composite = code;
         const isPrimary = primaryAssigned ? 0 : 1;
         primaryAssigned = true;
 
@@ -580,7 +588,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
     const cat = refcode ? catalog[refcode] : null;
     const mg = cat ? cat.g : null;
     const usd = cat ? cat.p : null;
-    const code = composite.split(':').slice(1).join(':');
+    const code = composite; // ya es el código interno solo, ver nota arriba
     const delivery = codeMap.get(code);
     const fechaInicio = delivery ? delivery.fechaEntrega : null;
     const tot = totalizadorByCode.get(code);
