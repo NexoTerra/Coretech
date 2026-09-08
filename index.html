@@ -12,7 +12,7 @@
   --gray1:#908D8E; --gray2:#9B9B9B; --gray3:#C4C4C4;
   --green:#1BAF7A; --orange:#E8722C; --blue:#0E7FA8;
   --ramp1:#4FBFE8; --ramp2:#28AAE1; --ramp3:#0E7FA8; --ramp4:#175A82;
-  --red:#D64545;
+  --red:#D64545; --gold:#B8862B; --purple:#7B5EC7;
   --shadow: 0 1px 2px rgba(22,35,60,.06), 0 4px 16px rgba(22,35,60,.05);
   --radius: 12px;
   --font-title:'Orbitron','Segoe UI',system-ui,sans-serif;
@@ -24,6 +24,7 @@
     --text:#EAF1FB; --text-dim:#A9B7CC; --text-faint:#7C8AA3;
     --green:#17A177; --orange:#D96E2A; --blue:#4586DA;
     --ramp1:#175A82; --ramp2:#0E7FA8; --ramp3:#28AAE1; --ramp4:#4FBFE8;
+    --gold:#D6A23F; --purple:#9B82E0;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
   }
 }
@@ -32,6 +33,7 @@
   --text:#EAF1FB; --text-dim:#A9B7CC; --text-faint:#7C8AA3;
   --green:#17A177; --orange:#D96E2A; --blue:#4586DA;
   --ramp1:#175A82; --ramp2:#0E7FA8; --ramp3:#28AAE1; --ramp4:#4FBFE8;
+  --gold:#D6A23F; --purple:#9B82E0;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
 }
 
@@ -2428,7 +2430,7 @@ function svgLineChart(categories, series, opts) {
   });
 
   let paths = '', legend = '';
-  const palette = ['var(--ramp3)', 'var(--orange)', 'var(--green)', 'var(--ramp1)', 'var(--red)', 'var(--navy)'];
+  const palette = ['var(--ramp3)', 'var(--orange)', 'var(--green)', 'var(--ramp1)', 'var(--red)', 'var(--navy)', 'var(--purple)', 'var(--gold)'];
   usable.forEach((s, si) => {
     const color = s.color || palette[si % palette.length];
     let d = '', drawing = false, dots = '';

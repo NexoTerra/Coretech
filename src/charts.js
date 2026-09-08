@@ -242,7 +242,7 @@ function svgLineChart(categories, series, opts) {
   });
 
   let paths = '', legend = '';
-  const palette = ['var(--ramp3)', 'var(--orange)', 'var(--green)', 'var(--ramp1)', 'var(--red)', 'var(--navy)'];
+  const palette = ['var(--ramp3)', 'var(--orange)', 'var(--green)', 'var(--ramp1)', 'var(--red)', 'var(--navy)', 'var(--purple)', 'var(--gold)'];
   usable.forEach((s, si) => {
     const color = s.color || palette[si % palette.length];
     let d = '', drawing = false, dots = '';
