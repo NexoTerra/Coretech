@@ -437,7 +437,7 @@ function renderPromedioReferencia(bundle, prod) {
   const chartEl = document.getElementById('chartPromedioReferencia');
   const table = document.getElementById('promedioReferenciaTable');
   const totals = byHerramientaProd(bundle, prod, null).sort((a, b) => b.metros - a.metros).slice(0, 8);
-  const avgByRef = avgMetrosPorReferenciaPorMes(bundle, prod);
+  const avgByRef = avgMetrosPorReferenciaPorMes(bundle);
   const monthSet = new Set();
   totals.forEach(t => {
     const byYm = avgByRef.get(d.ref.indexOf(t.ref));

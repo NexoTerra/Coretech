@@ -1218,36 +1218,32 @@ function cpmTrend(bundle, life) {
 }
 
 // ---------- Promedio mensual de metros por referencia (para CPM por sarta) ----------
-// "Promedio mensual" = para cada referencia y mes, el promedio de metros totales
-// logrados ESE MES por cada pieza (código) que tuvo actividad de esa referencia.
-// Alimenta el CPM, así que solo cuentan piezas que ya finalizaron su vida útil
-// (tienen fecha de baja registrada) — una pieza todavía activa no ha terminado
-// de acumular metros y distorsionaría el promedio hacia abajo.
-function avgMetrosPorReferenciaPorMes(bundle, prod) {
+// "Promedio mensual" = para cada referencia y mes, el promedio de METROS TOTALES
+// (vida completa, TOTALIZADOR) de cada pieza que se dio de baja ESE MES — no el
+// avance parcial que reportó ese mes. El mes que agrupa es el de la fecha de
+// baja, no el de cada reporte de producción: una pieza puede haber perforado en
+// varios meses distintos antes de terminar su vida útil, y lo que se compara
+// contra el CPM ideal es su rendimiento total el mes en que se cerró su ciclo.
+function avgMetrosPorReferenciaPorMes(bundle) {
   const epoch = bundle.meta.epoch || EPOCH_DEFAULT;
-  const dadaDeBaja = new Set();
-  for (const l of bundle.life) {
-    if (l[11] !== null && l[11] !== undefined) dadaDeBaja.add(l[0]);
-  }
-  // refIdx -> ym -> codigoMarcado -> metros acumulados ese mes
+  // refIdx -> ym (mes de la fecha de baja) -> [metros totales de cada pieza]
   const acc = new Map();
-  for (const p of prod) {
-    const [fecha, , , , refIdx, , cm, metros] = p;
+  for (const l of bundle.life) {
+    const [, refIdx, , mp, , , , , , , , fechaFinal] = l;
     if (refIdx === null || refIdx === undefined) continue;
-    if (!dadaDeBaja.has(cm)) continue;
-    const ym = dayToYM(fecha, epoch);
+    if (fechaFinal === null || fechaFinal === undefined) continue;
+    if (!(mp > 0)) continue;
+    const ym = dayToYM(fechaFinal, epoch);
     if (!acc.has(refIdx)) acc.set(refIdx, new Map());
     const byYm = acc.get(refIdx);
-    if (!byYm.has(ym)) byYm.set(ym, new Map());
-    const byCode = byYm.get(ym);
-    byCode.set(cm, (byCode.get(cm) || 0) + metros);
+    if (!byYm.has(ym)) byYm.set(ym, []);
+    byYm.get(ym).push(mp);
   }
   // refIdx -> ym -> {avg, n}
   const out = new Map();
   for (const [refIdx, byYm] of acc.entries()) {
     const m = new Map();
-    for (const [ym, byCode] of byYm.entries()) {
-      const vals = Array.from(byCode.values());
+    for (const [ym, vals] of byYm.entries()) {
       m.set(ym, { avg: vals.reduce((a, b) => a + b, 0) / vals.length, n: vals.length });
     }
     out.set(refIdx, m);
@@ -1261,7 +1257,7 @@ function avgMetrosPorReferenciaPorMes(bundle, prod) {
 // repita en otra sarta (precio y promedio son siempre por referencia, no por sarta).
 function cpmPorSarta(bundle, prod) {
   const { dict, catalog } = bundle;
-  const avgByRef = avgMetrosPorReferenciaPorMes(bundle, prod);
+  const avgByRef = avgMetrosPorReferenciaPorMes(bundle);
   const sartas = bundle.sartas || {};
   const out = [];
   for (const [sartaNombre, refcodes] of Object.entries(sartas)) {
@@ -3043,7 +3039,7 @@ function renderPromedioReferencia(bundle, prod) {
   const chartEl = document.getElementById('chartPromedioReferencia');
   const table = document.getElementById('promedioReferenciaTable');
   const totals = byHerramientaProd(bundle, prod, null).sort((a, b) => b.metros - a.metros).slice(0, 8);
-  const avgByRef = avgMetrosPorReferenciaPorMes(bundle, prod);
+  const avgByRef = avgMetrosPorReferenciaPorMes(bundle);
   const monthSet = new Set();
   totals.forEach(t => {
     const byYm = avgByRef.get(d.ref.indexOf(t.ref));
