@@ -472,14 +472,19 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
       const nombre = norm(row[c.nombre]);
       const clave = c.clave >= 0 ? row[c.clave] : null;
       if (!nombre || clave === null || clave === undefined) continue;
-      const refs = [];
+      // El mismo nombre de sarta puede aparecer en más de una fila cuando
+      // acepta variantes intercambiables (p.ej. dos modelos de shank válidos
+      // para la misma sarta) — hay que acumular los componentes de todas
+      // esas filas, no quedarse solo con la última (eso perdía en silencio
+      // los componentes de la primera fila).
+      if (!sartas[nombre]) sartas[nombre] = [];
+      const refs = sartas[nombre];
       for (const descRaw of String(clave).split('|')) {
         const desc = norm(descRaw);
         if (!desc) continue;
         const code = descToCode.get(desc.toUpperCase());
         if (code && !refs.includes(code)) refs.push(code);
       }
-      sartas[nombre] = refs;
     }
   }
 
