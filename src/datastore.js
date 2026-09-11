@@ -127,6 +127,93 @@ async function publishSharedBundle(bundle, sourceFilename) {
   await CTAuth.setDatasetMeta(sourceFilename, bundle.cpmIdealPorSarta || {});
 }
 
+const MINE_VALUE_MAP = {
+  segovia: ['SEGOVIA', 'SANDRA K', 'EL SILENCIO', 'PROVIDENCIA'],
+  marmato: ['MARMATO'],
+};
+
+function mineValuesForSlug(slug) {
+  return (MINE_VALUE_MAP[slug] || [String(slug || '').toUpperCase()]).slice();
+}
+
+function mineLabelForSlug(slug) {
+  return slug === 'marmato' ? 'MARMATO' : 'SEGOVIA';
+}
+
+function normUpperText(v) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).replace(/\s+/g, ' ').trim();
+  return s ? s.toUpperCase() : null;
+}
+
+function round3(n) {
+  return Math.round(Number(n || 0) * 1000) / 1000;
+}
+
+function bucketFromCausa(causa) {
+  const c = normUpperText(causa);
+  if (!c) return 'SIN_CAUSA';
+  if (c.includes('FIN DE VIDA')) return 'FIN_VIDA_UTIL';
+  if (c.includes('DETERMIN')) return 'OTRA';
+  return 'CONDICION_OPERATIVA';
+}
+
+function buildFieldProduccionRows(bundle, payload) {
+  const epoch = (bundle.meta && bundle.meta.epoch) || '2020-01-01';
+  const mina = mineLabelForSlug(payload.mineSlug);
+  const equipo = normUpperText(payload.equipo);
+  const operador = normUpperText(payload.operador);
+  const fecha = payload.fecha;
+  const metros = round3(payload.metros);
+  const tipos = ['CAMPO ' + String(payload.turno || '').toUpperCase().trim()];
+
+  const codeToLife = new Map((bundle.life || []).map(l => [l[0], l]));
+  const rows = [];
+  (payload.codigos || []).forEach((codigo, idx) => {
+    const life = codeToLife.get(codigo) || null;
+    const refIdx = life ? life[1] : null;
+    const herrIdx = life ? life[2] : null;
+    rows.push({
+      fecha,
+      mina,
+      tipo: tipos[0],
+      equipo,
+      ref_code: refIdx !== null && refIdx !== undefined ? bundle.dict.ref[refIdx] : null,
+      herramienta: herrIdx !== null && herrIdx !== undefined ? bundle.dict.herr[herrIdx] : null,
+      codigo_marcado: codigo,
+      metros,
+      es_primario: idx === 0,
+      operador,
+    });
+  });
+  return rows;
+}
+
+async function saveFieldRegistro(bundle, payload) {
+  const rows = buildFieldProduccionRows(bundle, payload);
+  if (!rows.length) throw new Error('Debes seleccionar al menos un código de herramienta.');
+  return CTAuth.insertProduccionRows(rows);
+}
+
+async function loadMisRegistros(payload) {
+  return CTAuth.listProduccionRecent(payload);
+}
+
+async function patchRegistroProduccion(id, patch) {
+  return CTAuth.updateProduccionRow(id, patch);
+}
+
+async function registrarBaja(payload) {
+  const patch = {
+    estado: 'INACTIVO',
+    motivo_bucket: bucketFromCausa(payload.causa),
+    causa: payload.causa || null,
+    falla: payload.modo || null,
+    fecha_final: payload.fecha || null,
+  };
+  return CTAuth.updatePiezaByCodigo(payload.codigo, patch);
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { bundleToRows, rowsToBundle, dateStrToDay };
+  module.exports = { bundleToRows, rowsToBundle, dateStrToDay, mineValuesForSlug, mineLabelForSlug, buildFieldProduccionRows, bucketFromCausa };
 }

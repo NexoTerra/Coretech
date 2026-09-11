@@ -1,6 +1,8 @@
 import base64, os
 
-SCRATCH = r"C:\Users\johnm\AppData\Local\Temp\claude\E--CLAUDE-claude-code\f599ab5f-5b74-4830-8380-2c5f51ee3a2b\scratchpad"
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRATCH = os.environ.get('CORETECH_SRC_DIR', THIS_DIR)
+
 
 def read(name, mode='r', encoding='utf-8'):
     path = os.path.join(SCRATCH, name)
@@ -43,7 +45,7 @@ html = html.replace('__SUPABASE_JS__', safe_script(supabase_js))
 html = html.replace('__AUTH_JS__', safe_script(auth_js))
 html = html.replace('__UI_JS__', safe_script(ui_js))
 
-out_path = os.path.join(SCRATCH, 'CoreTech_Dashboard_Segovia.html')
+out_path = os.path.abspath(os.path.join(SCRATCH, '..', 'index.html'))
 with open(out_path, 'w', encoding='utf-8') as f:
     f.write(html)
 
