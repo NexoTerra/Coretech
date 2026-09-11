@@ -84,11 +84,106 @@ __CSS__
       <span class="user-badge" id="userBadge" hidden></span>
       <select id="presentationMineSelect" hidden></select>
       <button id="appBackBtn" class="ghost">← Módulos</button>
+      <button id="fieldBtn">📝 Registro de campo</button>
       <button id="importBtn">⇪ Importar Excel</button>
       <button id="themeToggle" class="ghost">🌓 Auto</button>
       <button id="logoutBtn" class="ghost">Cerrar sesión</button>
     </div>
   </header>
+
+  <section class="card import-card" id="fieldCard" hidden>
+    <h3>Registro de campo (móvil)</h3>
+    <p>
+      Registra el avance del turno desde el celular. La app guarda el registro en la tabla compartida de
+      producción para que el panel se actualice automáticamente. El total de metros se sugiere como
+      <b>barrenos × longitud</b>, y puedes ajustarlo si en campo usaron otro valor final.
+    </p>
+    <form id="fieldForm" class="field-form">
+      <div class="field-grid">
+        <label>Fecha
+          <input type="date" id="fieldFecha" required>
+        </label>
+        <label>Turno
+          <select id="fieldTurno" required>
+            <option value="">Selecciona…</option>
+            <option value="DÍA">Día</option>
+            <option value="NOCHE">Noche</option>
+            <option value="MIXTO">Mixto</option>
+          </select>
+        </label>
+        <label>Mina
+          <select id="fieldMina" required></select>
+        </label>
+        <label>Taladro / equipo
+          <input id="fieldEquipo" list="fieldEquipoList" placeholder="Ej: JUMBO-4" required>
+          <datalist id="fieldEquipoList"></datalist>
+        </label>
+        <label>Sarta (opcional)
+          <select id="fieldSarta">
+            <option value="">Sin sarta</option>
+          </select>
+        </label>
+        <label>Operador
+          <input id="fieldOperador" placeholder="Nombre del operador" required>
+        </label>
+        <label>Barrenos
+          <input type="number" id="fieldBarrenos" min="1" step="1" value="1" required>
+        </label>
+        <label>Longitud por barreno (m)
+          <input type="number" id="fieldLongitud" min="0" step="0.01" value="0" required>
+        </label>
+        <label>Metros totales del registro
+          <input type="number" id="fieldMetros" min="0" step="0.01" value="0" required>
+        </label>
+      </div>
+      <label>Herramientas/códigos usados (inventario activo)
+        <select id="fieldCodigos" multiple size="8" required></select>
+      </label>
+      <label>Observaciones de campo
+        <textarea id="fieldObs" rows="2" placeholder="Ej: terreno fracturado, cambio de broca, etc."></textarea>
+      </label>
+      <div class="field-actions">
+        <button type="submit" class="small primary">Guardar registro</button>
+        <button type="button" class="small" id="fieldResetBtn">Limpiar</button>
+      </div>
+      <div class="import-status" id="fieldStatus" style="display:none;"></div>
+      <p class="chart-sub" id="fieldMetaNote"></p>
+    </form>
+
+    <h4>Mis registros recientes</h4>
+    <p class="chart-sub">Puedes corregir tus últimos registros de metros/equipo/operador si hubo un error de digitación.</p>
+    <div class="table-wrap">
+      <table id="fieldHistoryTable"></table>
+    </div>
+  </section>
+
+  <section class="card import-card" id="bajaCard" hidden>
+    <h3>Bajas de herramientas (solo administrador)</h3>
+    <p>Registra la baja final de una pieza y su causa para que el histórico y las métricas de vida útil queden al día.</p>
+    <form id="bajaForm" class="field-form">
+      <div class="field-grid">
+        <label>Código de herramienta
+          <select id="bajaCodigo" required></select>
+        </label>
+        <label>Fecha de baja
+          <input type="date" id="bajaFecha" required>
+        </label>
+        <label>Modo de descarte
+          <select id="bajaModo"></select>
+        </label>
+        <label>Causa de descarte
+          <select id="bajaCausa"></select>
+        </label>
+      </div>
+      <label>Observación de baja
+        <textarea id="bajaObs" rows="2" placeholder="Detalle adicional de la baja"></textarea>
+      </label>
+      <div class="field-actions">
+        <button type="submit" class="small primary">Registrar baja</button>
+      </div>
+      <div class="import-status" id="bajaStatus" style="display:none;"></div>
+    </form>
+  </section>
 
   <section class="card import-card" id="importCard" hidden>
     <h3>Importar nueva base de datos</h3>
