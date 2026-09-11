@@ -152,11 +152,50 @@ async function setDatasetMeta(sourceFilename, cpmIdealPorSarta) {
   if (error) throw error;
 }
 
+async function insertProduccionRows(rows) {
+  const { data, error } = await client.from('produccion').insert(rows).select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+async function listProduccionRecent(opts) {
+  opts = opts || {};
+  let q = client.from('produccion').select('*').order('id', { ascending: false }).limit(opts.limit || 80);
+  if (opts.mineValues && opts.mineValues.length) q = q.in('mina', opts.mineValues);
+  if (opts.operador) q = q.eq('operador', opts.operador);
+  if (opts.fromDate) q = q.gte('fecha', opts.fromDate);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+async function updateProduccionRow(id, patch) {
+  const { data, error } = await client.from('produccion').update(patch).eq('id', id).select('*').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function listPiezasByMine(mineValues) {
+  let q = client.from('piezas').select('*');
+  if (mineValues && mineValues.length) q = q.in('mina', mineValues);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+async function updatePiezaByCodigo(codigo, patch) {
+  const { data, error } = await client.from('piezas').update(patch).eq('codigo_marcado', codigo).select('*').maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 window.CTAuth = {
   signIn, signOut, getSession, getMyProfile, setPassword,
   listProfiles, updateProfileRole, updateProfileMines, removeProfile,
   loadConciliacionRemote, setConciliacion,
   fetchTable, replaceTable, getDatasetMeta, setDatasetMeta,
+  insertProduccionRows, listProduccionRecent, updateProduccionRow,
+  listPiezasByMine, updatePiezaByCodigo,
   pendingAuthType: PENDING_AUTH_TYPE,
   cameFromAuthLink: CAME_FROM_AUTH_LINK,
   onAuthStateChange: (cb) => client.auth.onAuthStateChange(cb),
