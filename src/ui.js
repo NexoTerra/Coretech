@@ -826,6 +826,70 @@ function showImportStatus(msg, kind) {
   box.className = 'import-status ' + kind;
   box.style.display = 'block';
 }
+// atob() da un "binary string" (un byte por char) — hay que pasarlo por
+// TextDecoder para reconstruir bien el UTF-8 (importer.js trae comentarios
+// y textos en español con tildes/eñes).
+function b64ToUtf8(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+// El worker de importación corre XLSX + el importer completo en su propio
+// hilo: por más grande que sea el archivo (miles de filas), la pestaña
+// nunca se congela porque nada de este trabajo pesado toca el hilo
+// principal. Cada import crea un worker nuevo y lo termina al terminar,
+// para no dejar estado de una importación pegado a la siguiente.
+const IMPORT_WORKER_ENTRY_SRC = [
+  'self.onmessage = function (e) {',
+  '  try {',
+  '    var data = new Uint8Array(e.data.buffer);',
+  '    var sheetNamesOnly = XLSX.read(data, { type: "array", bookSheets: true });',
+  '    var needed = pickNeededSheetNames(sheetNamesOnly.SheetNames);',
+  '    var wb = needed.length',
+  '      ? XLSX.read(data, { type: "array", cellDates: false, sheets: needed })',
+  '      : XLSX.read(data, { type: "array", cellDates: false });',
+  '    var bundle = buildBundleFromWorkbook(wb, e.data.fileName, e.data.fallbackCatalog || {});',
+  '    self.postMessage({ ok: true, bundle: bundle });',
+  '  } catch (err) {',
+  '    self.postMessage({ ok: false, error: (err && err.message) || String(err) });',
+  '  }',
+  '};',
+].join('\n');
+
+let importWorkerBlobUrl = null;
+function getImportWorkerBlobUrl() {
+  if (!importWorkerBlobUrl) {
+    const libsSrc = b64ToUtf8(window.CT_IMPORT_WORKER_LIBS_B64);
+    const fullSrc = libsSrc + '\n;\n' + IMPORT_WORKER_ENTRY_SRC;
+    importWorkerBlobUrl = URL.createObjectURL(new Blob([fullSrc], { type: 'text/javascript' }));
+  }
+  return importWorkerBlobUrl;
+}
+
+function parseWorkbookInWorker(arrayBuffer, fileName, fallbackCatalog) {
+  return new Promise((resolve, reject) => {
+    let worker;
+    try {
+      worker = new Worker(getImportWorkerBlobUrl());
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    worker.onmessage = (e) => {
+      worker.terminate();
+      if (e.data && e.data.ok) resolve(e.data.bundle);
+      else reject(new Error((e.data && e.data.error) || 'Error desconocido al leer el archivo.'));
+    };
+    worker.onerror = (e) => {
+      worker.terminate();
+      reject(new Error(e.message || 'Error desconocido al leer el archivo.'));
+    };
+    worker.postMessage({ buffer: arrayBuffer, fileName, fallbackCatalog }, [arrayBuffer]);
+  });
+}
+
 function handleFile(file) {
   if (!file) return;
   showImportStatus('Leyendo ' + file.name + '…', 'info');
@@ -833,19 +897,20 @@ function handleFile(file) {
   reader.onload = async (e) => {
     let newBundle;
     try {
-      const data = new Uint8Array(e.target.result);
-      // Leer el libro completo de una sola vez congela la pestaña con archivos
-      // grandes: el libro real trae hojas de decenas de miles de filas (p.ej.
-      // "BD") que ningún formato soportado usa. Primero se listan los nombres
-      // de hoja sin parsear celdas (rápido) y luego se pide el parseo
-      // completo solo de las hojas que de verdad hacen falta.
-      const sheetNamesOnly = XLSX.read(data, { type: 'array', bookSheets: true });
-      const neededSheets = pickNeededSheetNames(sheetNamesOnly.SheetNames);
-      const wb = neededSheets.length
-        ? XLSX.read(data, { type: 'array', cellDates: false, sheets: neededSheets })
-        : XLSX.read(data, { type: 'array', cellDates: false });
       const fallbackCatalog = (BUNDLE.catalog && Object.keys(BUNDLE.catalog).length) ? BUNDLE.catalog : DEFAULT_BUNDLE.catalog;
-      newBundle = buildBundleFromWorkbook(wb, file.name, fallbackCatalog);
+      // Si el navegador no soporta Web Workers (muy poco común hoy), se cae
+      // de vuelta a leerlo en el hilo principal en vez de fallar del todo.
+      if (typeof Worker !== 'undefined' && window.CT_IMPORT_WORKER_LIBS_B64) {
+        newBundle = await parseWorkbookInWorker(e.target.result, file.name, fallbackCatalog);
+      } else {
+        const data = new Uint8Array(e.target.result);
+        const sheetNamesOnly = XLSX.read(data, { type: 'array', bookSheets: true });
+        const neededSheets = pickNeededSheetNames(sheetNamesOnly.SheetNames);
+        const wb = neededSheets.length
+          ? XLSX.read(data, { type: 'array', cellDates: false, sheets: neededSheets })
+          : XLSX.read(data, { type: 'array', cellDates: false });
+        newBundle = buildBundleFromWorkbook(wb, file.name, fallbackCatalog);
+      }
       if (!newBundle.prod.length) throw new Error('El archivo no contiene registros de producción reconocibles.');
       if (!Object.keys(newBundle.catalog || {}).length) newBundle.catalog = fallbackCatalog;
       BUNDLE = newBundle;

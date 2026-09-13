@@ -29,11 +29,18 @@ supabase_js = read('supabase.min.js')
 auth_js = read('auth.js')
 ui_js = read('ui.js')
 
+# El worker de importación (ver ui.js: parseWorkbookInWorker) necesita su
+# propia copia de XLSX + importer.js, porque un Worker no comparte el scope
+# global de la pestaña principal. Se manda como base64 (no como <script>
+# aparte) para que el archivo siga siendo un solo HTML autocontenido.
+worker_libs_b64 = base64.b64encode((xlsx_lib + '\n;\n' + importer_js).encode('utf-8')).decode('ascii')
+
 html = template
 html = html.replace('__CSS__', css)
 html = html.replace('__LOGO_NAVY__', logo_navy_b64)
 html = html.replace('__LOGO_WHITE__', logo_white_b64)
 html = html.replace('__DATA_BUNDLE_JSON__', safe_script(data_bundle_json))
+html = html.replace('__IMPORT_WORKER_LIBS_B64__', worker_libs_b64)
 html = html.replace('__XLSX_LIB__', safe_script(xlsx_lib))
 html = html.replace('__AGG_JS__', safe_script(agg_js))
 html = html.replace('__IMPORTER_JS__', safe_script(importer_js))
