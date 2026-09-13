@@ -4,19 +4,9 @@
 const MONTH_ABBR = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
 
 const MINES = [
-  { slug: 'segovia', label: 'Aris Mining Segovia', sub: 'Sandra K · El Silencio · Providencia', icon: '⛏️', dataMina: ['SEGOVIA', 'SANDRA K', 'EL SILENCIO', 'PROVIDENCIA'] },
-  { slug: 'marmato', label: 'Aris Mining Marmato', sub: 'Registros de campo móviles', icon: '⛏️', dataMina: ['MARMATO'] },
+  { slug: 'segovia', label: 'Aris Mining Segovia', sub: 'Sandra K · El Silencio · Providencia', icon: '⛏️' },
+  { slug: 'marmato', label: 'Aris Mining Marmato', sub: 'Aún sin datos importados', icon: '⛏️' },
 ];
-function mineCfg(slug) {
-  return MINES.find(m => m.slug === slug) || MINES[0];
-}
-function mineValuesForSlugUI(slug) {
-  const cfg = mineCfg(slug);
-  return (cfg.dataMina || []).slice();
-}
-function mineStoredLabel(slug) {
-  return slug === 'marmato' ? 'MARMATO' : 'SEGOVIA';
-}
 function emptyBundle() {
   return {
     meta: { epoch: '2020-01-01', generated: '', source: '' },
@@ -37,10 +27,6 @@ const PAGE_SIZE = 20;
 let currentUser = null;
 let appInitialized = false;
 let conciliacionCache = {};
-let minePinnedValues = [];
-let fieldHistoryRows = [];
-let refreshTimer = null;
-const FIELD_META_KEY = 'ct_field_meta_v1';
 function canSeeMine(slug) {
   return currentUser && (currentUser.role === 'admin' || (currentUser.allowed_mines || []).includes(slug));
 }
@@ -204,7 +190,6 @@ function populateFilterOptions() {
     toInput.min = dayToDateStr(minD, epoch); toInput.max = dayToDateStr(maxD, epoch);
   }
   fromInput.value = ''; toInput.value = '';
-  applyMinePinUI();
 }
 
 const herrForRefCache = new Map();
@@ -829,7 +814,6 @@ function renderAll() {
   renderCPM(BUNDLE, life);
   renderCPMTrend(BUNDLE, life);
   renderGananciaPerdida(BUNDLE, life);
-  renderAlertasVida(alertasVidaUtil(BUNDLE, life));
   tableState.page = 1;
   renderTable(prod, life);
   renderMeta(kpis);
@@ -860,6 +844,10 @@ function handleFile(file) {
       herrForRefCache.clear();
       populateFilterOptions();
       renderAll();
+      if (currentMine !== 'segovia') {
+        showImportStatus(`Cargado: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}". La base de datos compartida para esta mina aún no está lista, así que por ahora esto solo se ve en tu navegador.`, 'ok');
+        return;
+      }
       showImportStatus(`Cargado en tu vista: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}". Guardando para todos los usuarios…`, 'info');
     } catch (err) {
       showImportStatus('No se pudo procesar el archivo: ' + err.message, 'err');
@@ -868,9 +856,6 @@ function handleFile(file) {
     try {
       await publishSharedBundle(newBundle, file.name);
       cachedSharedBundle = newBundle;
-      populateFieldControls();
-      populateBajaControls();
-      await refreshFieldHistory();
       showImportStatus(`Listo: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}", guardado y visible para todos los usuarios.`, 'ok');
     } catch (pubErr) {
       showImportStatus(`Tu vista se actualizó, pero no se pudo guardar para los demás usuarios (${pubErr.message}). Vuelve a intentarlo.`, 'err');
@@ -895,319 +880,6 @@ async function toggleConciliacion(codigo) {
     conciliacionCache[codigo] = prev;
     alert('No se pudo guardar la conciliación (' + e.message + ').');
   }
-}
-
-function normUpperText(v) {
-  if (v === null || v === undefined) return null;
-  const s = String(v).replace(/\s+/g, ' ').trim();
-  return s ? s.toUpperCase() : null;
-}
-function mineMatchesCurrent(v) {
-  if (!minePinnedValues.length) return true;
-  return minePinnedValues.includes(normUpperText(v));
-}
-function canWriteFieldData() {
-  if (!currentUser) return false;
-  return currentUser.role === 'admin' || currentUser.role === 'operator';
-}
-function canManageBajas() {
-  return currentUser && currentUser.role === 'admin';
-}
-function readFieldMetaMap() {
-  try { return JSON.parse(localStorage.getItem(FIELD_META_KEY) || '{}'); }
-  catch (e) { return {}; }
-}
-function writeFieldMetaMap(map) {
-  try { localStorage.setItem(FIELD_META_KEY, JSON.stringify(map)); }
-  catch (e) {}
-}
-function saveFieldMetaForRows(insertedRows, payload) {
-  const map = readFieldMetaMap();
-  insertedRows.forEach(r => {
-    if (!r || r.id === null || r.id === undefined) return;
-    map[String(r.id)] = {
-      turno: payload.turno || null,
-      barrenos: payload.barrenos || null,
-      longitud: payload.longitud || null,
-      observaciones: payload.observaciones || null,
-      sarta: payload.sarta || null,
-      mineSlug: payload.mineSlug || null,
-      ownerEmail: currentUser ? currentUser.email : null,
-      updatedAt: new Date().toISOString(),
-    };
-  });
-  writeFieldMetaMap(map);
-}
-function applyMinePinUI() {
-  if (!minePinnedValues.length) return;
-  filters.mina = minePinnedValues.filter(v => BUNDLE.dict.mina.includes(v));
-  if (!filters.mina.length && minePinnedValues.length) filters.mina = minePinnedValues.slice();
-  const minaBtn = document.getElementById('minaBtn');
-  if (minaBtn) {
-    minaBtn.disabled = true;
-    minaBtn.title = 'La mina se controla desde el módulo seleccionado.';
-  }
-}
-function defaultToday() {
-  return new Date().toISOString().slice(0, 10);
-}
-function autoCalcMetros() {
-  const b = Number(document.getElementById('fieldBarrenos').value || 0);
-  const l = Number(document.getElementById('fieldLongitud').value || 0);
-  const m = Math.round((b * l) * 1000) / 1000;
-  document.getElementById('fieldMetros').value = String(m);
-}
-function currentMineSlugFromField() {
-  const sel = document.getElementById('fieldMina');
-  return sel && sel.value ? sel.value : (currentMine || 'segovia');
-}
-function collectInventoryRows() {
-  const d = BUNDLE.dict;
-  const out = [];
-  for (const l of BUNDLE.life) {
-    const codigo = l[0];
-    const ref = d.ref[l[1]] || '';
-    const herr = d.herr[l[2]] || ref;
-    const estado = d.estado[l[5]] || '';
-    const mina = d.mina[l[9]] || '';
-    if (!mineMatchesCurrent(mina)) continue;
-    if (estado === 'INACTIVO' || estado === 'INACTIVA') continue;
-    out.push({ codigo, ref, herr, estado, mina });
-  }
-  out.sort((a, b) => (a.herr + a.codigo).localeCompare(b.herr + b.codigo));
-  return out;
-}
-function populateFieldControls() {
-  const writeEnabled = canWriteFieldData();
-  const btn = document.getElementById('fieldBtn');
-  if (btn) btn.hidden = presentationMode || !currentUser || !(currentUser.role === 'admin' || currentUser.role === 'operator');
-  const card = document.getElementById('fieldCard');
-  if (!card) return;
-  const mineSel = document.getElementById('fieldMina');
-  mineSel.innerHTML = '';
-  MINES.filter(m => canSeeMine(m.slug)).forEach(m => {
-    mineSel.appendChild(el(`<option value="${esc(m.slug)}" ${m.slug === currentMine ? 'selected' : ''}>${esc(m.label)}</option>`));
-  });
-  if (!mineSel.value && currentMine) mineSel.value = currentMine;
-
-  const equipoSet = new Set();
-  BUNDLE.dict.equipo.forEach(e => { if (e) equipoSet.add(e); });
-  const equipoList = document.getElementById('fieldEquipoList');
-  equipoList.innerHTML = Array.from(equipoSet).sort().map(e => `<option value="${esc(e)}"></option>`).join('');
-
-  const sartaSel = document.getElementById('fieldSarta');
-  const names = Object.keys(BUNDLE.sartas || {}).sort();
-  sartaSel.innerHTML = `<option value="">Sin sarta</option>${names.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('')}`;
-
-  const inv = collectInventoryRows();
-  const codes = document.getElementById('fieldCodigos');
-  codes.innerHTML = inv.map(r => `<option value="${esc(r.codigo)}">${esc(r.herr)} · ${esc(r.codigo)}${r.estado ? ' · ' + esc(r.estado) : ''}</option>`).join('');
-
-  const opInput = document.getElementById('fieldOperador');
-  if (!opInput.value && currentUser && currentUser.email) opInput.value = currentUser.email.split('@')[0].toUpperCase();
-  document.getElementById('fieldFecha').value = defaultToday();
-  const baseNote = writeEnabled
-    ? 'Nota: Turno y observaciones se guardan en la bitácora local de este dispositivo. Para guardarlas en base compartida, falta agregar columnas en Supabase.'
-    : 'Tu rol es de solo lectura en producción. Puedes ver historial, pero no registrar datos.';
-  const noteEl = document.getElementById('fieldMetaNote');
-  noteEl.dataset.baseNote = baseNote;
-  noteEl.textContent = baseNote;
-  Array.from(card.querySelectorAll('input,select,textarea,button')).forEach(x => {
-    if (x.id === 'fieldBtn') return;
-    if (x.id === 'fieldResetBtn') return;
-    if (x.id === 'fieldMina') x.disabled = !writeEnabled;
-    else if (x.tagName === 'BUTTON' && x.type === 'submit') x.disabled = !writeEnabled;
-    else x.disabled = !writeEnabled && x.id !== 'fieldCodigos';
-  });
-  document.getElementById('fieldResetBtn').disabled = !writeEnabled;
-}
-function selectedCodesFromForm() {
-  return Array.from(document.getElementById('fieldCodigos').selectedOptions).map(o => o.value);
-}
-async function submitFieldForm(e) {
-  e.preventDefault();
-  const status = document.getElementById('fieldStatus');
-  status.style.display = 'none';
-  if (!canWriteFieldData()) {
-    status.textContent = 'Tu rol actual no tiene permiso para guardar registros de campo.';
-    status.className = 'import-status err';
-    status.style.display = 'block';
-    return;
-  }
-  const payload = {
-    fecha: document.getElementById('fieldFecha').value,
-    turno: document.getElementById('fieldTurno').value,
-    mineSlug: currentMineSlugFromField(),
-    equipo: document.getElementById('fieldEquipo').value,
-    sarta: document.getElementById('fieldSarta').value || null,
-    operador: document.getElementById('fieldOperador').value,
-    barrenos: Number(document.getElementById('fieldBarrenos').value || 0),
-    longitud: Number(document.getElementById('fieldLongitud').value || 0),
-    metros: Number(document.getElementById('fieldMetros').value || 0),
-    observaciones: document.getElementById('fieldObs').value.trim(),
-    codigos: selectedCodesFromForm(),
-  };
-  if (!payload.fecha || !payload.turno || !payload.equipo || !payload.operador || payload.metros <= 0 || !payload.codigos.length) {
-    status.textContent = 'Completa fecha, turno, equipo, operador, metros y al menos un código de herramienta.';
-    status.className = 'import-status err';
-    status.style.display = 'block';
-    return;
-  }
-  status.textContent = 'Guardando registro de campo…';
-  status.className = 'import-status info';
-  status.style.display = 'block';
-  try {
-    const rows = await saveFieldRegistro(BUNDLE, payload);
-    saveFieldMetaForRows(rows, payload);
-    status.textContent = `Registro guardado: ${fmtNum(rows.length)} fila(s) en producción.`;
-    status.className = 'import-status ok';
-    await forceRefreshData('save-field');
-    await refreshFieldHistory();
-  } catch (err) {
-    status.textContent = `No se pudo guardar el registro (${err.message}). Si tu usuario es de campo, falta habilitar permisos RLS para escritura en producción.`;
-    status.className = 'import-status err';
-  }
-}
-function renderFieldHistoryTable(rows) {
-  const table = document.getElementById('fieldHistoryTable');
-  if (!table) return;
-  const meta = readFieldMetaMap();
-  if (!rows.length) {
-    table.innerHTML = '<thead><tr><th>Resultado</th></tr></thead><tbody><tr><td class="empty-note">Sin registros para este operario/mina.</td></tr></tbody>';
-    return;
-  }
-  const body = rows.map(r => {
-    const m = meta[String(r.id)] || {};
-    const canEdit = canWriteFieldData() && (currentUser.role === 'admin' || normUpperText(r.operador) === normUpperText(document.getElementById('fieldOperador').value));
-    return `<tr>
-      <td>${esc(String(r.id))}</td>
-      <td>${esc(r.fecha || '')}</td>
-      <td>${esc(r.equipo || '')}</td>
-      <td>${esc(r.operador || '')}</td>
-      <td class="num">${fmtNum(r.metros, 2)}</td>
-      <td>${esc(r.codigo_marcado || '')}</td>
-      <td>${esc(m.turno || '—')}</td>
-      <td>${esc(m.observaciones || '—')}</td>
-      <td>${canEdit ? `<button type="button" class="small" data-edit-row="${esc(String(r.id))}">Corregir</button>` : '—'}</td>
-    </tr>`;
-  }).join('');
-  table.innerHTML = `<thead><tr><th>ID</th><th>Fecha</th><th>Equipo</th><th>Operador</th><th>Metros</th><th>Código</th><th>Turno</th><th>Observación</th><th>Acción</th></tr></thead><tbody>${body}</tbody>`;
-  table.querySelectorAll('button[data-edit-row]').forEach(btn => btn.addEventListener('click', () => editFieldRow(btn.dataset.editRow)));
-}
-async function refreshFieldHistory() {
-  const mineValues = mineValuesForSlugUI(currentMineSlugFromField());
-  const operador = normUpperText(document.getElementById('fieldOperador').value || '');
-  try {
-    const rows = await loadMisRegistros({ mineValues, operador, limit: 60 });
-    fieldHistoryRows = rows;
-    renderFieldHistoryTable(rows);
-  } catch (err) {
-    renderFieldHistoryTable([]);
-    const status = document.getElementById('fieldStatus');
-    status.textContent = `No se pudo leer historial (${err.message}).`;
-    status.className = 'import-status err';
-    status.style.display = 'block';
-  }
-}
-async function editFieldRow(id) {
-  const row = fieldHistoryRows.find(r => String(r.id) === String(id));
-  if (!row) return;
-  const nMetros = prompt('Nuevo valor de metros para el registro #' + id, String(row.metros || ''));
-  if (nMetros === null) return;
-  const nEquipo = prompt('Nuevo equipo/taladro para el registro #' + id, String(row.equipo || ''));
-  if (nEquipo === null) return;
-  const nOperador = prompt('Nuevo operador para el registro #' + id, String(row.operador || ''));
-  if (nOperador === null) return;
-  try {
-    await patchRegistroProduccion(id, {
-      metros: Math.round(Number(nMetros || 0) * 1000) / 1000,
-      equipo: normUpperText(nEquipo),
-      operador: normUpperText(nOperador),
-    });
-    await forceRefreshData('edit-field');
-    await refreshFieldHistory();
-  } catch (err) {
-    alert('No se pudo corregir el registro (' + err.message + '). Si tu usuario es de campo, falta habilitar permisos de actualización en producción.');
-  }
-}
-function populateBajaControls() {
-  const card = document.getElementById('bajaCard');
-  const show = !presentationMode && canManageBajas();
-  card.hidden = !show;
-  if (!show) return;
-  const inv = collectInventoryRows();
-  const codigoSel = document.getElementById('bajaCodigo');
-  codigoSel.innerHTML = inv.length ? inv.map(r => `<option value="${esc(r.codigo)}">${esc(r.herr)} · ${esc(r.codigo)} · ${esc(r.mina || '')}</option>`).join('') : '<option value="">Sin piezas activas</option>';
-  document.getElementById('bajaFecha').value = defaultToday();
-  const modos = (BUNDLE.dict.falla || []).filter(Boolean).sort();
-  const causas = (BUNDLE.dict.causa || []).filter(Boolean).sort();
-  document.getElementById('bajaModo').innerHTML = `<option value="">Sin modo</option>${modos.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('')}`;
-  document.getElementById('bajaCausa').innerHTML = `<option value="">Sin causa</option>${causas.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}`;
-}
-async function submitBajaForm(e) {
-  e.preventDefault();
-  const status = document.getElementById('bajaStatus');
-  status.style.display = 'none';
-  if (!canManageBajas()) {
-    status.textContent = 'Solo los administradores pueden registrar bajas.';
-    status.className = 'import-status err';
-    status.style.display = 'block';
-    return;
-  }
-  const payload = {
-    codigo: document.getElementById('bajaCodigo').value,
-    fecha: document.getElementById('bajaFecha').value,
-    modo: document.getElementById('bajaModo').value || null,
-    causa: document.getElementById('bajaCausa').value || null,
-    observacion: document.getElementById('bajaObs').value.trim(),
-  };
-  if (!payload.codigo || !payload.fecha) {
-    status.textContent = 'Selecciona código y fecha de baja.';
-    status.className = 'import-status err';
-    status.style.display = 'block';
-    return;
-  }
-  try {
-    await registrarBaja(payload);
-    status.textContent = 'Baja registrada correctamente.';
-    status.className = 'import-status ok';
-    status.style.display = 'block';
-    await forceRefreshData('baja');
-    populateFieldControls();
-    populateBajaControls();
-  } catch (err) {
-    status.textContent = `No se pudo registrar la baja (${err.message}).`;
-    status.className = 'import-status err';
-    status.style.display = 'block';
-  }
-}
-function renderAlertasVida(alertas) {
-  const box = document.getElementById('fieldMetaNote');
-  if (!box) return;
-  const base = box.dataset.baseNote || box.textContent || '';
-  if (!alertas || !alertas.totalActivasEvaluadas) {
-    box.textContent = `${base} | Alertas de vida útil: no hay piezas activas con MGAR para evaluar.`;
-    return;
-  }
-  box.textContent = `${base} | Alertas: preventivo 80%=${alertas.preventivo80}, alto 90%=${alertas.alto90}, crítico 100%=${alertas.critico100}.`;
-}
-async function forceRefreshData(_reason) {
-  await loadSharedBundleIntoApp(true);
-  applyMinePinUI();
-  herrForRefCache.clear();
-  populateFilterOptions();
-  renderAll();
-}
-async function periodicRefreshTick() {
-  if (!currentUser || !currentMine) return;
-  try {
-    await forceRefreshData('poll');
-    await refreshFieldHistory();
-  } catch (e) {}
-}
-function setupRefreshTimer() {
-  if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(periodicRefreshTick, 30000);
 }
 
 // ============ theme ============
@@ -1251,7 +923,6 @@ async function renderUserMgmt() {
       <span class="user-email">${esc(p.email)}</span>
       <select data-id="${esc(p.id)}">
         <option value="viewer" ${p.role === 'viewer' ? 'selected' : ''}>Visualizador</option>
-        <option value="operator" ${p.role === 'operator' ? 'selected' : ''}>Operador de campo</option>
         <option value="admin" ${p.role === 'admin' ? 'selected' : ''}>Administrador</option>
       </select>
       ${minesHtml}
@@ -1262,7 +933,7 @@ async function renderUserMgmt() {
     select.addEventListener('change', async () => {
       try {
         await CTAuth.updateProfileRole(p.id, select.value);
-        status.textContent = `Rol de ${p.email} actualizado a ${select.value === 'admin' ? 'Administrador' : (select.value === 'operator' ? 'Operador de campo' : 'Visualizador')}.`;
+        status.textContent = `Rol de ${p.email} actualizado a ${select.value === 'admin' ? 'Administrador' : 'Visualizador'}.`;
         status.className = 'import-status ok'; status.style.display = 'block';
         if (isSelf) { currentUser.role = select.value; updateAuthUI(); }
         renderUserMgmt();
@@ -1307,25 +978,22 @@ async function renderUserMgmt() {
 // ============ autenticación (real — Supabase Auth, ver auth.js) ============
 function updateAuthUI() {
   if (!currentUser) return;
-  const roleLabel = currentUser.role === 'admin' ? 'Administrador' : (currentUser.role === 'operator' ? 'Operador' : 'Visualizador');
-  const label = `${currentUser.email} · ${roleLabel}`;
+  const label = `${currentUser.email} · ${currentUser.role === 'admin' ? 'Administrador' : 'Visualizador'}`;
   const badge = document.getElementById('userBadge');
   badge.textContent = label; badge.hidden = false;
   document.getElementById('hubUserBadge').textContent = label;
   document.getElementById('importBtn').hidden = presentationMode || currentUser.role !== 'admin';
-  document.getElementById('fieldBtn').hidden = presentationMode || !(currentUser.role === 'admin' || currentUser.role === 'operator');
 }
 // Se guarda en memoria durante la sesión para que entrar y salir del módulo
 // varias veces no vuelva a traer todo desde Supabase cada vez — solo la
 // primera vez (o después de importar un Excel nuevo, que ya actualiza esto
 // directamente).
 let cachedSharedBundle = null;
-async function loadSharedBundleIntoApp(force) {
-  if (!force && cachedSharedBundle) { BUNDLE = cachedSharedBundle; return; }
+async function loadSharedBundleIntoApp() {
+  if (cachedSharedBundle) { BUNDLE = cachedSharedBundle; return; }
   try {
     const shared = await loadSharedBundle();
     if (shared) { BUNDLE = shared; cachedSharedBundle = shared; }
-    else if (force) { BUNDLE = DEFAULT_BUNDLE; }
   } catch (e) { /* se queda con el bundle base embebido */ }
 }
 function showScreen(name) {
@@ -1391,7 +1059,6 @@ function populatePresentationMineSelect() {
 async function enterMine(slug, opts) {
   opts = opts || {};
   currentMine = slug;
-  minePinnedValues = mineValuesForSlugUI(slug).map(normUpperText);
   presentationMode = !!opts.presentation;
   document.body.classList.toggle('presentation', presentationMode);
   document.getElementById('presentationMineSelect').hidden = !presentationMode;
@@ -1405,23 +1072,16 @@ async function enterMine(slug, opts) {
   filters = EMPTY_FILTERS();
   herrForRefCache.clear();
   await refreshConciliacion();
-  await loadSharedBundleIntoApp(true);
+  // La base de datos compartida todavía es una sola (sin separar por mina);
+  // hasta que se estructure por mina, solo Segovia se sincroniza con ella.
+  if (slug === 'segovia') await loadSharedBundleIntoApp();
   showScreen('app');
   if (!appInitialized) { appInitialized = true; initApp(); }
-  else {
-    populateFilterOptions();
-    renderAll();
-    populateFieldControls();
-    populateBajaControls();
-    refreshFieldHistory();
-  }
-  setupRefreshTimer();
+  else { populateFilterOptions(); renderAll(); }
 }
 function backToHub() {
   currentMine = null;
-  minePinnedValues = [];
   presentationMode = false;
-  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
   document.body.classList.remove('presentation');
   document.title = 'CORE TECH · Desempeño de Aceros de Perforación';
   renderHub();
@@ -1483,8 +1143,6 @@ async function handleLogout() {
   await CTAuth.signOut();
   currentUser = null;
   currentMine = null;
-  minePinnedValues = [];
-  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
   document.body.classList.remove('authed', 'screen-hub', 'screen-app', 'screen-users');
   document.getElementById('loginPassword').value = '';
 }
@@ -1532,65 +1190,11 @@ document.querySelectorAll('.table-tabs button').forEach(b => b.addEventListener(
   document.getElementById('tableSearch').addEventListener('input', (e) => { tableState.search = e.target.value; tableState.page = 1; renderTable(currentProd, currentLife); });
 
   const fileInput = document.getElementById('fileInput');
-  const importCard = document.getElementById('importCard');
-  const fieldCard = document.getElementById('fieldCard');
-  const bajaCard = document.getElementById('bajaCard');
-
-  document.getElementById('fieldBtn').addEventListener('click', async () => {
-    fieldCard.hidden = !fieldCard.hidden;
-    if (!fieldCard.hidden) {
-      importCard.hidden = true;
-      populateFieldControls();
-      await refreshFieldHistory();
-      fieldCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  });
-
   document.getElementById('importBtn').addEventListener('click', () => {
-    importCard.hidden = !importCard.hidden;
-    if (!importCard.hidden) {
-      fieldCard.hidden = true;
-      if (canManageBajas()) bajaCard.hidden = false;
-      importCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
+    const card = document.getElementById('importCard');
+    card.hidden = !card.hidden;
+    if (!card.hidden) card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
-
-  document.getElementById('fieldForm').addEventListener('submit', submitFieldForm);
-  document.getElementById('fieldResetBtn').addEventListener('click', () => {
-    document.getElementById('fieldTurno').value = '';
-    document.getElementById('fieldEquipo').value = '';
-    document.getElementById('fieldSarta').value = '';
-    document.getElementById('fieldBarrenos').value = '1';
-    document.getElementById('fieldLongitud').value = '0';
-    document.getElementById('fieldObs').value = '';
-    autoCalcMetros();
-  });
-  document.getElementById('fieldBarrenos').addEventListener('input', autoCalcMetros);
-  document.getElementById('fieldLongitud').addEventListener('input', autoCalcMetros);
-  document.getElementById('fieldMina').addEventListener('change', async (e) => {
-    currentMine = e.target.value;
-    minePinnedValues = mineValuesForSlugUI(currentMine).map(normUpperText);
-    await forceRefreshData('mine-switch-field');
-    populateFieldControls();
-    populateBajaControls();
-    await refreshFieldHistory();
-  });
-  document.getElementById('fieldSarta').addEventListener('change', () => {
-    const sel = document.getElementById('fieldSarta').value;
-    if (!sel) return;
-    const refSet = new Set(BUNDLE.sartas[sel] || []);
-    const codSel = document.getElementById('fieldCodigos');
-    Array.from(codSel.options).forEach(opt => {
-      const code = opt.value;
-      const life = BUNDLE.life.find(l => l[0] === code);
-      const ref = life ? BUNDLE.dict.ref[life[1]] : null;
-      opt.selected = !!(ref && refSet.has(ref));
-    });
-  });
-  document.getElementById('fieldOperador').addEventListener('change', refreshFieldHistory);
-
-  document.getElementById('bajaForm').addEventListener('submit', submitBajaForm);
-
   document.getElementById('browseBtn').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
   const dz = document.getElementById('dropzone');
@@ -1600,15 +1204,11 @@ document.querySelectorAll('.table-tabs button').forEach(b => b.addEventListener(
   document.getElementById('restoreBtn').addEventListener('click', () => {
     BUNDLE = DEFAULT_BUNDLE; filters = EMPTY_FILTERS();
     herrForRefCache.clear(); populateFilterOptions(); renderAll();
-    populateFieldControls(); populateBajaControls(); refreshFieldHistory();
     showImportStatus('Se restauró tu vista al archivo base original. Esto no cambia la base de datos compartida — para eso, importa un Excel.', 'info');
   });
 
   populateFilterOptions();
   renderAll();
-  populateFieldControls();
-  populateBajaControls();
-  refreshFieldHistory();
 }
 
 document.addEventListener('DOMContentLoaded', initAuth);

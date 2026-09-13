@@ -618,38 +618,6 @@ function rendimientoPorPieza(bundle, life) {
   });
 }
 
-function alertasVidaUtil(bundle, life) {
-  const { dict } = bundle;
-  const isActiva = (estado) => estado === 'ACTIVO' || estado === 'ACTIVA' || estado === 'RESERVA';
-  const rows = [];
-  for (const l of life) {
-    const [codigo, refIdx, herrIdx, mp, mg, estadoIdx, , , , minaIdx, equipoIdx] = l;
-    const estado = dict.estado[estadoIdx];
-    if (!isActiva(estado)) continue;
-    if (!mg || mg <= 0 || !mp || mp <= 0) continue;
-    const pct = (mp / mg) * 100;
-    rows.push({
-      codigo,
-      referencia: dict.ref[refIdx] || '',
-      herramienta: dict.herr[herrIdx] || dict.ref[refIdx] || '',
-      mina: dict.mina[minaIdx] || '',
-      equipo: dict.equipo[equipoIdx] || '',
-      metros: mp,
-      ideal: mg,
-      pct,
-      nivel: pct >= 100 ? 'CRITICO' : pct >= 90 ? 'ALTO' : pct >= 80 ? 'PREVENTIVO' : 'OK',
-    });
-  }
-  rows.sort((a, b) => b.pct - a.pct);
-  return {
-    totalActivasEvaluadas: rows.length,
-    preventivo80: rows.filter(r => r.pct >= 80 && r.pct < 90).length,
-    alto90: rows.filter(r => r.pct >= 90 && r.pct < 100).length,
-    critico100: rows.filter(r => r.pct >= 100).length,
-    top: rows.slice(0, 12),
-  };
-}
-
 if (typeof module !== 'undefined') {
   module.exports = {
     applyFilters, kpiTotals, byHerramientaProd, rendimientoPorHerramienta, motivoBaja,
@@ -657,7 +625,7 @@ if (typeof module !== 'undefined') {
     vidaUtilGlobal, vidaUtilPorHerramienta, cumplimientoPorMes,
     cpmTrend, rendimientoPorPieza,
     avgMetrosPorReferenciaPorMes, cpmPorSarta, cpmPorSartaTotal, metrosPorCodigoPorReferencia,
-    gananciaPerdidaPorHerramienta, alertasVidaUtil,
+    gananciaPerdidaPorHerramienta,
     dayToYM, dayToYear, dayToDateStr, MONTH_NAMES,
   };
 }
