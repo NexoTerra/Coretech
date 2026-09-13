@@ -834,7 +834,16 @@ function handleFile(file) {
     let newBundle;
     try {
       const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: 'array', cellDates: false });
+      // Leer el libro completo de una sola vez congela la pestaña con archivos
+      // grandes: el libro real trae hojas de decenas de miles de filas (p.ej.
+      // "BD") que ningún formato soportado usa. Primero se listan los nombres
+      // de hoja sin parsear celdas (rápido) y luego se pide el parseo
+      // completo solo de las hojas que de verdad hacen falta.
+      const sheetNamesOnly = XLSX.read(data, { type: 'array', bookSheets: true });
+      const neededSheets = pickNeededSheetNames(sheetNamesOnly.SheetNames);
+      const wb = neededSheets.length
+        ? XLSX.read(data, { type: 'array', cellDates: false, sheets: neededSheets })
+        : XLSX.read(data, { type: 'array', cellDates: false });
       const fallbackCatalog = (BUNDLE.catalog && Object.keys(BUNDLE.catalog).length) ? BUNDLE.catalog : DEFAULT_BUNDLE.catalog;
       newBundle = buildBundleFromWorkbook(wb, file.name, fallbackCatalog);
       if (!newBundle.prod.length) throw new Error('El archivo no contiene registros de producción reconocibles.');

@@ -637,6 +637,48 @@ function buildBundleFromWorkbook(workbook, sourceName, fallbackCatalog) {
   return buildBundleFromLongFormat(workbook, sourceName);
 }
 
+// El libro real trae hojas que ningún formato usa (p.ej. "BD"/"BASE PBI" en
+// el formato Segovia/Marmato, con decenas de miles de filas de resúmenes
+// para Power BI) — leerlas igual con XLSX.read() es lo que hace que importar
+// un archivo grande congele la pestaña ("la página no responde"). Esto
+// calcula, a partir de solo los NOMBRES de hoja (lectura liviana con
+// bookSheets:true, sin parsear celdas), cuáles hojas hacen falta para
+// cualquiera de los formatos soportados, para poder pedirle a XLSX.read()
+// que solo parse esas — el resto ni se toca.
+const ALL_SHEET_ALIAS_GROUPS = [
+  PROD_SHEET_ALIASES, LIFE_SHEET_ALIASES, REF_SHEET_ALIASES,
+  WIDE_SHEET_ALIASES, MGAR_SHEET_ALIASES, CONTADOR_SHEET_ALIASES,
+  CODIGOS_ALFA_SHEET_ALIASES, SARTAS_SHEET_ALIASES, DATOS_KPIS_SHEET_ALIASES,
+  TOTALIZADOR_SHEET_ALIASES,
+];
+function pickNeededSheetNames(sheetNames) {
+  const normalized = sheetNames.map(n => ({ raw: n, norm: normHeader(n) }));
+  const picked = [];
+  for (const aliases of ALL_SHEET_ALIAS_GROUPS) {
+    let hit = null;
+    for (const alias of aliases) {
+      const a = normHeader(alias);
+      hit = normalized.find(x => x.norm === a);
+      if (hit) break;
+    }
+    if (!hit) {
+      // Sin coincidencia exacta: probar solo en el sentido "el nombre real
+      // contiene el alias completo" — nunca al revés. findSheet() sí prueba
+      // ambos sentidos, pero el sentido inverso deja que un nombre real
+      // corto (p.ej. la hoja "BD") califique por ser substring de un alias
+      // largo de otro formato (p.ej. "BD_ACEROS"), colando hojas enormes que
+      // ningún formato real usa.
+      for (const alias of aliases) {
+        const a = normHeader(alias);
+        hit = normalized.find(x => x.norm.includes(a));
+        if (hit) break;
+      }
+    }
+    if (hit && !picked.includes(hit.raw)) picked.push(hit.raw);
+  }
+  return picked;
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { buildBundleFromWorkbook, buildBundleFromWideFormat, buildBundleFromLongFormat, findSheet, normHeader, Dict_ };
+  module.exports = { buildBundleFromWorkbook, buildBundleFromWideFormat, buildBundleFromLongFormat, findSheet, normHeader, Dict_, pickNeededSheetNames };
 }
