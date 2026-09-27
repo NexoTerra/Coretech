@@ -60,12 +60,55 @@ __CSS__
     <p class="chart-sub">
       El acceso es solo por invitación: un administrador invita a cada persona desde el panel de Supabase
       (Authentication → Users → Invite user); al aceptar la invitación, la persona crea su propia contraseña
-      — CORE TECH nunca la ve ni la guarda. Aquí, como Administrador, puedes asignar el rol Administrador o
-      Visualizador a cada cuenta, revocar el acceso de alguien, y elegir a qué minas puede entrar cada
-      Visualizador (los Administradores siempre ven todas).
+      — CORE TECH nunca la ve ni la guarda. Aquí, como Administrador, puedes asignar el rol de cada cuenta:
+      <b>Administrador</b> (todo, incluida esta pantalla), <b>Visualizador</b> (el panel completo de una o
+      varias minas, según lo que le marques), <b>Supervisor</b> (solo metraje y rendimiento, sin costos, de
+      las 3 minas), <b>Digitalizador</b> (carga los reportes diarios de las 3 minas), o <b>Técnico</b> (solo
+      metraje y rendimiento, sin costos, acotado a una única mina). Elige a qué minas puede entrar cada
+      Visualizador o Técnico — Administrador, Supervisor y Digitalizador siempre ven todas.
     </p>
     <div id="userList" class="user-list"></div>
     <div class="import-status" id="userAddStatus" style="display:none;"></div>
+  </section>
+</div>
+
+<!-- Panel restringido de solo lectura: metraje y rendimiento por pieza, sin
+     precios ni CPM. Lo usan Supervisor (las 3 minas juntas) y Técnico (una
+     sola mina, la que le asignó el administrador). -->
+<div id="perfScreen">
+  <div class="screen-header">
+    <div>
+      <h1>Panel de rendimiento</h1>
+      <p class="subtitle" id="perfSubtitle"></p>
+    </div>
+    <div class="topbar-actions">
+      <span class="user-badge" id="perfUserBadge"></span>
+      <button id="perfLogoutBtn" class="ghost">Cerrar sesión</button>
+    </div>
+  </div>
+  <section class="card">
+    <div class="filterbar">
+      <div class="filter-group" id="perfMinaFilterGroup" hidden>
+        <label>Mina</label>
+        <select id="perfMinaSelect"><option value="">Todas</option></select>
+      </div>
+      <div class="filter-group" id="perfSearchFilterGroup">
+        <label>Buscar</label>
+        <input type="search" id="perfSearch" placeholder="Código, referencia, herramienta…">
+      </div>
+    </div>
+    <p class="chart-sub" id="perfLegend">
+      <span class="legend-item"><span class="legend-dot" style="background:var(--red)"></span>Bajo 85% de lo ideal</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--orange)"></span>Entre 85% y 100%</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span>100% o más</span>
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead id="perfTableHead"></thead>
+        <tbody id="perfTableBody"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="perfPagination"></div>
   </section>
 </div>
 

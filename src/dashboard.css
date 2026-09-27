@@ -43,10 +43,13 @@ body{
 
 /* ---- login gate ---- */
 body.authed #loginScreen{display:none;}
-#app, #hubScreen, #usersScreen{display:none;}
+#app, #hubScreen, #usersScreen, #perfScreen{display:none;}
 body.screen-hub #hubScreen{display:flex;}
 body.screen-app #app{display:block;}
 body.screen-users #usersScreen{display:block;}
+body.screen-perf #perfScreen{display:block;}
+#perfScreen{max-width:1400px; margin:0 auto; padding:20px 24px 60px;}
+#perfScreen .screen-header{max-width:none; margin:0 0 18px; padding:0;}
 #loginScreen{
   min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
 }

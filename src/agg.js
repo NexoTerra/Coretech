@@ -652,12 +652,43 @@ function rendimientoPorPieza(bundle, life) {
   });
 }
 
+// ---------- Panel de rendimiento (vista restringida para Supervisor/Técnico) ----------
+// Igual que rendimientoPorPieza, pero agrega mina (para la vista combinada del
+// supervisor) y la fecha del último reporte de producción de esa pieza — se
+// calcula en vivo a partir de "prod" en lugar de leerla del Excel importado,
+// para que quede siempre al día una vez que el registro diario se haga desde
+// el propio aplicativo. Nunca incluye precio, USD ni CPM — esta vista es
+// exclusivamente de metraje y rendimiento.
+function panelRendimientoPiezas(bundle, life, prod) {
+  const { dict } = bundle;
+  const epoch = bundle.meta.epoch || EPOCH_DEFAULT;
+  const ultimaFechaPorCodigo = new Map();
+  for (const p of prod) {
+    const codigo = p[6], fecha = p[0];
+    if (!codigo) continue;
+    const prev = ultimaFechaPorCodigo.get(codigo);
+    if (prev === undefined || fecha > prev) ultimaFechaPorCodigo.set(codigo, fecha);
+  }
+  return life.filter(l => l[3] > 0).map(l => {
+    const [cm, refIdx, herrIdx, mp, mg, , , , , minaIdx] = l;
+    const ratio = mg ? mp / mg * 100 : null;
+    const ultimaFecha = ultimaFechaPorCodigo.get(cm);
+    return {
+      codigo: cm, referencia: dict.ref[refIdx] || '', herramienta: dict.herr[herrIdx] || dict.ref[refIdx] || '',
+      mina: (minaIdx !== null && minaIdx !== undefined) ? (dict.mina[minaIdx] || '') : '',
+      metrosTotales: mp, mpIdeal: mg, rangoAceptable: mg ? mg * 0.85 : null,
+      pctRendimiento: ratio,
+      ultimaFecha: ultimaFecha !== undefined ? dayToDateStr(ultimaFecha, epoch) : null,
+    };
+  });
+}
+
 if (typeof module !== 'undefined') {
   module.exports = {
     applyFilters, kpiTotals, byHerramientaProd, rendimientoPorHerramienta, motivoBaja,
     cpmPorHerramienta, cpmGlobal, causaBreakdown, fallaBreakdown,
     vidaUtilGlobal, vidaUtilPorHerramienta, cumplimientoPorMes,
-    cpmTrend, rendimientoPorPieza,
+    cpmTrend, rendimientoPorPieza, panelRendimientoPiezas,
     avgMetrosPorReferenciaPorMes, cpmPorSarta, cpmPorSartaTotal, sartaMinasPorHerramienta, metrosPorCodigoPorReferencia,
     gananciaPerdidaPorHerramienta,
     dayToYM, dayToYear, dayToDateStr, MONTH_NAMES,

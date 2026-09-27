@@ -7,6 +7,10 @@ const MINES = [
   { slug: 'segovia', label: 'Aris Mining Segovia', sub: 'Sandra K · El Silencio · Providencia', icon: '⛏️' },
   { slug: 'marmato', label: 'Aris Mining Marmato', sub: 'Aún sin datos importados', icon: '⛏️' },
 ];
+const ROLE_LABELS = {
+  admin: 'Administrador', viewer: 'Visualizador',
+  supervisor: 'Supervisor', digitalizador: 'Digitalizador', tecnico: 'Técnico',
+};
 function emptyBundle() {
   return {
     meta: { epoch: '2020-01-01', generated: '', source: '' },
@@ -27,8 +31,13 @@ const PAGE_SIZE = 20;
 let currentUser = null;
 let appInitialized = false;
 let conciliacionCache = {};
+// Supervisor y Digitalizador siempre ven las 3 minas (su trabajo es
+// justamente consolidar/cargar datos de todas); Técnico queda acotado a la
+// mina que le asignó el administrador vía allowed_mines, igual que Visualizador.
 function canSeeMine(slug) {
-  return currentUser && (currentUser.role === 'admin' || (currentUser.allowed_mines || []).includes(slug));
+  if (!currentUser) return false;
+  if (currentUser.role === 'admin' || currentUser.role === 'supervisor' || currentUser.role === 'digitalizador') return true;
+  return (currentUser.allowed_mines || []).includes(slug);
 }
 
 function containerWidth(id, fallback) {
@@ -1022,15 +1031,18 @@ async function renderUserMgmt() {
   listEl.innerHTML = '';
   profiles.forEach(p => {
     const isSelf = currentUser && p.id === currentUser.id;
-    const minesHtml = p.role === 'admin'
+    // Admin, Supervisor y Digitalizador siempre ven las 3 minas (ver
+    // canSeeMine) — las casillas de mina solo aplican a Visualizador y
+    // Técnico, que sí quedan acotados a las minas marcadas.
+    const sinMinasEspecificas = p.role === 'admin' || p.role === 'supervisor' || p.role === 'digitalizador';
+    const minesHtml = sinMinasEspecificas
       ? '<span class="mine-checks"><span class="admin-note">ve todas las minas</span></span>'
       : `<span class="mine-checks">${MINES.map(m => `<label><input type="checkbox" data-mine="${esc(m.slug)}" ${(p.allowed_mines || []).includes(m.slug) ? 'checked' : ''}> ${esc(m.label.replace('Aris Mining ', ''))}</label>`).join('')}</span>`;
+    const roleOptions = ['viewer', 'admin', 'supervisor', 'digitalizador', 'tecnico']
+      .map(r => `<option value="${r}" ${p.role === r ? 'selected' : ''}>${esc(ROLE_LABELS[r])}</option>`).join('');
     const row = el(`<div class="user-row">
       <span class="user-email">${esc(p.email)}</span>
-      <select data-id="${esc(p.id)}">
-        <option value="viewer" ${p.role === 'viewer' ? 'selected' : ''}>Visualizador</option>
-        <option value="admin" ${p.role === 'admin' ? 'selected' : ''}>Administrador</option>
-      </select>
+      <select data-id="${esc(p.id)}">${roleOptions}</select>
       ${minesHtml}
       <button class="small ghost" type="button" ${isSelf ? 'disabled title="No puedes revocar tu propio acceso"' : ''}>Revocar</button>
     </div>`);
@@ -1039,7 +1051,7 @@ async function renderUserMgmt() {
     select.addEventListener('change', async () => {
       try {
         await CTAuth.updateProfileRole(p.id, select.value);
-        status.textContent = `Rol de ${p.email} actualizado a ${select.value === 'admin' ? 'Administrador' : 'Visualizador'}.`;
+        status.textContent = `Rol de ${p.email} actualizado a ${ROLE_LABELS[select.value] || select.value}.`;
         status.className = 'import-status ok'; status.style.display = 'block';
         if (isSelf) { currentUser.role = select.value; updateAuthUI(); }
         renderUserMgmt();
@@ -1084,10 +1096,12 @@ async function renderUserMgmt() {
 // ============ autenticación (real — Supabase Auth, ver auth.js) ============
 function updateAuthUI() {
   if (!currentUser) return;
-  const label = `${currentUser.email} · ${currentUser.role === 'admin' ? 'Administrador' : 'Visualizador'}`;
+  const label = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
   const badge = document.getElementById('userBadge');
   badge.textContent = label; badge.hidden = false;
   document.getElementById('hubUserBadge').textContent = label;
+  const perfBadge = document.getElementById('perfUserBadge');
+  if (perfBadge) perfBadge.textContent = label;
   document.getElementById('importBtn').hidden = presentationMode || currentUser.role !== 'admin';
 }
 // Se guarda en memoria durante la sesión para que entrar y salir del módulo
@@ -1103,7 +1117,7 @@ async function loadSharedBundleIntoApp() {
   } catch (e) { /* se queda con el bundle base embebido */ }
 }
 function showScreen(name) {
-  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users');
+  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users', 'screen-perf');
   document.body.classList.add('screen-' + name);
 }
 function mineInfo(slug) {
@@ -1148,8 +1162,131 @@ async function enterHub(user) {
   currentUser = user;
   document.body.classList.add('authed');
   updateAuthUI();
+  // Supervisor y Técnico van directo a su panel restringido de metraje —
+  // no tienen módulos que elegir todavía, así que el selector de módulo
+  // (con las tarjetas de mina/presentación/usuarios) no les sirve de nada.
+  // Digitalizador aún no tiene pantalla propia (llega en la fase siguiente).
+  if (user.role === 'supervisor' || user.role === 'tecnico') {
+    await enterPerfScreen();
+    return;
+  }
+  if (user.role === 'digitalizador') {
+    showScreen('perf');
+    document.getElementById('perfSubtitle').textContent = 'Esta función estará disponible pronto.';
+    document.getElementById('perfMinaFilterGroup').hidden = true;
+    document.getElementById('perfSearchFilterGroup').hidden = true;
+    document.getElementById('perfLegend').hidden = true;
+    document.getElementById('perfTableHead').innerHTML = '';
+    document.getElementById('perfTableBody').innerHTML = '';
+    document.getElementById('perfPagination').innerHTML = '';
+    wirePerfEvents();
+    return;
+  }
   renderHub();
   showScreen('hub');
+}
+
+// ============ panel de rendimiento (Supervisor / Técnico) ============
+let perfState = { search: '', mina: '', page: 1, allRows: [] };
+const PERF_PAGE_SIZE = 20;
+
+async function loadBundleForPerf(slug) {
+  let bundle = MINE_DEFAULT_BUNDLES[slug] || emptyBundle();
+  // La base de datos compartida todavía es una sola (sin separar por mina);
+  // hasta que se estructure por mina, solo Segovia se sincroniza con ella.
+  if (slug === 'segovia') {
+    if (cachedSharedBundle) { bundle = cachedSharedBundle; }
+    else {
+      try { const shared = await loadSharedBundle(); if (shared) { bundle = shared; cachedSharedBundle = shared; } }
+      catch (e) { /* se queda con el bundle base embebido */ }
+    }
+  }
+  return bundle;
+}
+
+async function enterPerfScreen() {
+  showScreen('perf');
+  document.getElementById('perfSearchFilterGroup').hidden = false;
+  document.getElementById('perfLegend').hidden = false;
+  const isSupervisor = currentUser.role === 'supervisor';
+  const minesToLoad = isSupervisor ? MINES : MINES.filter(m => (currentUser.allowed_mines || []).includes(m.slug));
+  document.getElementById('perfSubtitle').textContent = isSupervisor
+    ? 'Metraje y rendimiento por pieza — las 3 minas, sin costos'
+    : `Metraje y rendimiento por pieza — ${minesToLoad.map(m => m.label).join(', ') || 'sin mina asignada'}`;
+  document.getElementById('perfMinaFilterGroup').hidden = !isSupervisor;
+
+  const allRows = [];
+  for (const m of minesToLoad) {
+    const bundle = await loadBundleForPerf(m.slug);
+    allRows.push(...panelRendimientoPiezas(bundle, bundle.life, bundle.prod));
+  }
+  perfState.allRows = allRows;
+  perfState.page = 1;
+  perfState.mina = '';
+
+  if (isSupervisor) {
+    const minaSel = document.getElementById('perfMinaSelect');
+    const minas = Array.from(new Set(allRows.map(r => r.mina).filter(Boolean))).sort();
+    minaSel.innerHTML = '<option value="">Todas</option>' + minas.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  }
+  wirePerfEvents();
+  renderPerfTable();
+}
+
+function wirePerfEvents() {
+  const logoutBtn = document.getElementById('perfLogoutBtn');
+  if (!logoutBtn.dataset.wired) {
+    logoutBtn.dataset.wired = '1';
+    logoutBtn.addEventListener('click', handleLogout);
+  }
+  const search = document.getElementById('perfSearch');
+  if (!search.dataset.wired) {
+    search.dataset.wired = '1';
+    search.addEventListener('input', (e) => { perfState.search = e.target.value; perfState.page = 1; renderPerfTable(); });
+  }
+  const minaSel = document.getElementById('perfMinaSelect');
+  if (!minaSel.dataset.wired) {
+    minaSel.dataset.wired = '1';
+    minaSel.addEventListener('change', (e) => { perfState.mina = e.target.value; perfState.page = 1; renderPerfTable(); });
+  }
+}
+
+function renderPerfTable() {
+  let rows = perfState.allRows;
+  if (perfState.mina) rows = rows.filter(r => r.mina === perfState.mina);
+  if (perfState.search) {
+    const q = perfState.search.toLowerCase();
+    rows = rows.filter(r => [r.codigo, r.referencia, r.herramienta].some(v => String(v || '').toLowerCase().includes(q)));
+  }
+  rows = rows.slice().sort((a, b) => (a.pctRendimiento ?? 999) - (b.pctRendimiento ?? 999));
+
+  const showMina = currentUser.role === 'supervisor';
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / PERF_PAGE_SIZE));
+  perfState.page = Math.min(perfState.page, totalPages);
+  const pageRows = rows.slice((perfState.page - 1) * PERF_PAGE_SIZE, perfState.page * PERF_PAGE_SIZE);
+
+  const thead = `<tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th>${showMina ? '<th>Mina</th>' : ''}<th class="num">Metros Totales</th><th class="num">MP Ideal</th><th class="num">Rango Aceptable</th><th class="num">% Rendimiento</th><th>Última Fecha de Reporte</th></tr>`;
+  const tbody = pageRows.map(r => `<tr>
+    <td>${esc(r.referencia)}</td><td>${esc(r.herramienta)}</td><td>${esc(r.codigo)}</td>
+    ${showMina ? `<td>${esc(r.mina)}</td>` : ''}
+    <td class="num">${fmtNum(r.metrosTotales)}</td>
+    <td class="num">${r.mpIdeal != null ? fmtNum(r.mpIdeal) : '—'}</td>
+    <td class="num">${r.rangoAceptable != null ? fmtNum(Math.round(r.rangoAceptable)) : '—'}</td>
+    <td class="num">${r.pctRendimiento != null ? `<span class="pill ${rendPillClass(r.pctRendimiento)}">${r.pctRendimiento.toFixed(0)}%</span>` : '—'}</td>
+    <td>${esc(r.ultimaFecha || '—')}</td>
+  </tr>`).join('');
+
+  document.getElementById('perfTableHead').innerHTML = thead;
+  document.getElementById('perfTableBody').innerHTML = tbody || `<tr><td colspan="${showMina ? 8 : 7}" class="empty-note">Sin resultados.</td></tr>`;
+  document.getElementById('perfPagination').innerHTML = `
+    <button class="small" id="perfPgPrev" ${perfState.page <= 1 ? 'disabled' : ''}>← Anterior</button>
+    <span>Página ${perfState.page} de ${totalPages} · ${fmtNum(total)} filas</span>
+    <button class="small" id="perfPgNext" ${perfState.page >= totalPages ? 'disabled' : ''}>Siguiente →</button>
+  `;
+  const prevBtn = document.getElementById('perfPgPrev'), nextBtn = document.getElementById('perfPgNext');
+  if (prevBtn) prevBtn.addEventListener('click', () => { perfState.page--; renderPerfTable(); });
+  if (nextBtn) nextBtn.addEventListener('click', () => { perfState.page++; renderPerfTable(); });
 }
 function populatePresentationMineSelect() {
   const sel = document.getElementById('presentationMineSelect');
