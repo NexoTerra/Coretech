@@ -102,6 +102,20 @@ __CSS__
       <span class="legend-item"><span class="legend-dot" style="background:var(--orange)"></span>Entre 85% y 100%</span>
       <span class="legend-item"><span class="legend-dot" style="background:var(--green)"></span>100% o más</span>
     </p>
+    <div class="perf-selection-bar" id="perfSelectionBar">
+      <span class="perf-selection-count" id="perfSelectionCount">0 herramientas seleccionadas</span>
+      <button class="small ghost" id="perfSelectAllFiltered" type="button">Seleccionar todas las filtradas</button>
+      <button class="small ghost" id="perfClearSelection" type="button">Limpiar selección</button>
+      <button class="small" id="perfToggleChart" type="button" disabled>Ver gráfico</button>
+      <button class="small primary" id="perfExportPdf" type="button" disabled>Exportar PDF</button>
+    </div>
+    <div class="card chart-card" id="perfChartPanel" hidden>
+      <h3>Comparativo de herramientas seleccionadas</h3>
+      <p class="chart-sub">% de rendimiento (metros perforados / metro ideal) por herramienta marcada abajo.</p>
+      <div id="perfChartRendimiento"></div>
+      <p class="chart-sub" style="margin-top:20px;">Metros reales perforados vs. metro ideal (garantizado).</p>
+      <div id="perfChartMetros"></div>
+    </div>
     <div class="table-wrap">
       <table>
         <thead id="perfTableHead"></thead>

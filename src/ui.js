@@ -1176,6 +1176,8 @@ async function enterHub(user) {
     document.getElementById('perfMinaFilterGroup').hidden = true;
     document.getElementById('perfSearchFilterGroup').hidden = true;
     document.getElementById('perfLegend').hidden = true;
+    document.getElementById('perfSelectionBar').hidden = true;
+    document.getElementById('perfChartPanel').hidden = true;
     document.getElementById('perfTableHead').innerHTML = '';
     document.getElementById('perfTableBody').innerHTML = '';
     document.getElementById('perfPagination').innerHTML = '';
@@ -1187,7 +1189,7 @@ async function enterHub(user) {
 }
 
 // ============ panel de rendimiento (Supervisor / Técnico) ============
-let perfState = { search: '', mina: '', page: 1, allRows: [] };
+let perfState = { search: '', mina: '', page: 1, allRows: [], selected: new Set() };
 const PERF_PAGE_SIZE = 20;
 
 async function loadBundleForPerf(slug) {
@@ -1208,6 +1210,7 @@ async function enterPerfScreen() {
   showScreen('perf');
   document.getElementById('perfSearchFilterGroup').hidden = false;
   document.getElementById('perfLegend').hidden = false;
+  document.getElementById('perfSelectionBar').hidden = false;
   const isSupervisor = currentUser.role === 'supervisor';
   const minesToLoad = isSupervisor ? MINES : MINES.filter(m => (currentUser.allowed_mines || []).includes(m.slug));
   document.getElementById('perfSubtitle').textContent = isSupervisor
@@ -1223,6 +1226,7 @@ async function enterPerfScreen() {
   perfState.allRows = allRows;
   perfState.page = 1;
   perfState.mina = '';
+  perfState.selected = new Set();
 
   if (isSupervisor) {
     const minaSel = document.getElementById('perfMinaSelect');
@@ -1249,15 +1253,207 @@ function wirePerfEvents() {
     minaSel.dataset.wired = '1';
     minaSel.addEventListener('change', (e) => { perfState.mina = e.target.value; perfState.page = 1; renderPerfTable(); });
   }
+  const tbody = document.getElementById('perfTableBody');
+  if (!tbody.dataset.wired) {
+    tbody.dataset.wired = '1';
+    tbody.addEventListener('change', (e) => {
+      if (!e.target.classList.contains('perf-row-chk')) return;
+      const codigo = e.target.dataset.codigo;
+      if (e.target.checked) perfState.selected.add(codigo); else perfState.selected.delete(codigo);
+      updatePerfSelectionBar();
+      const panel = document.getElementById('perfChartPanel');
+      if (panel && !panel.hidden) renderPerfCharts();
+    });
+  }
+  const selAllBtn = document.getElementById('perfSelectAllFiltered');
+  if (!selAllBtn.dataset.wired) {
+    selAllBtn.dataset.wired = '1';
+    selAllBtn.addEventListener('click', () => {
+      getFilteredPerfRows().forEach(r => perfState.selected.add(r.codigo));
+      renderPerfTable();
+    });
+  }
+  const clearBtn = document.getElementById('perfClearSelection');
+  if (!clearBtn.dataset.wired) {
+    clearBtn.dataset.wired = '1';
+    clearBtn.addEventListener('click', () => { perfState.selected.clear(); renderPerfTable(); });
+  }
+  const chartBtn = document.getElementById('perfToggleChart');
+  if (!chartBtn.dataset.wired) {
+    chartBtn.dataset.wired = '1';
+    chartBtn.addEventListener('click', () => {
+      const panel = document.getElementById('perfChartPanel');
+      panel.hidden = !panel.hidden;
+      chartBtn.textContent = panel.hidden ? 'Ver gráfico' : 'Ocultar gráfico';
+      if (!panel.hidden) renderPerfCharts();
+    });
+  }
+  const exportBtn = document.getElementById('perfExportPdf');
+  if (!exportBtn.dataset.wired) {
+    exportBtn.dataset.wired = '1';
+    exportBtn.addEventListener('click', exportPerfPdf);
+  }
 }
 
-function renderPerfTable() {
+function getFilteredPerfRows() {
   let rows = perfState.allRows;
   if (perfState.mina) rows = rows.filter(r => r.mina === perfState.mina);
   if (perfState.search) {
     const q = perfState.search.toLowerCase();
     rows = rows.filter(r => [r.codigo, r.referencia, r.herramienta].some(v => String(v || '').toLowerCase().includes(q)));
   }
+  return rows;
+}
+
+function getSelectedPerfRows() {
+  const byCodigo = new Map(perfState.allRows.map(r => [r.codigo, r]));
+  return Array.from(perfState.selected)
+    .map(c => byCodigo.get(c))
+    .filter(Boolean)
+    .sort((a, b) => (a.pctRendimiento ?? 999) - (b.pctRendimiento ?? 999));
+}
+
+function updatePerfSelectionBar() {
+  const bar = document.getElementById('perfSelectionBar');
+  if (!bar) return;
+  const n = perfState.selected.size;
+  const filtered = getFilteredPerfRows();
+  document.getElementById('perfSelectionCount').textContent = n === 1 ? '1 herramienta seleccionada' : `${n} herramientas seleccionadas`;
+  document.getElementById('perfSelectAllFiltered').textContent = `Seleccionar todas las filtradas (${filtered.length})`;
+  document.getElementById('perfToggleChart').disabled = n === 0;
+  document.getElementById('perfExportPdf').disabled = n === 0;
+  if (n === 0) {
+    const panel = document.getElementById('perfChartPanel');
+    panel.hidden = true;
+    document.getElementById('perfToggleChart').textContent = 'Ver gráfico';
+  }
+}
+
+// Construye el par de gráficos comparativos (% de rendimiento y metros
+// reales vs. ideal) para un conjunto de filas seleccionadas. `width` se pasa
+// aparte de containerWidth() porque también se reutiliza para la exportación
+// a PDF, donde no hay un contenedor visible en pantalla que medir.
+function buildPerfChartsHtml(rows, width) {
+  const rendItems = rows.map(r => ({
+    label: `${r.herramienta}${r.mina ? ' · ' + r.mina : ''} (${r.codigo})`,
+    value: r.pctRendimiento != null ? Math.round(r.pctRendimiento) : 0,
+    valueLabel: r.pctRendimiento != null ? `${r.pctRendimiento.toFixed(0)}%` : 'Sin dato',
+    tooltip: r.pctRendimiento != null ? `${r.pctRendimiento.toFixed(1)}%` : 'Sin dato',
+    color: r.pctRendimiento != null ? rendColor(r.pctRendimiento) : 'var(--gray3)',
+  }));
+  const metrosItems = rows.map(r => ({
+    label: `${r.herramienta} (${r.codigo})`,
+    a: r.metrosTotales, b: r.mpIdeal,
+    aValueLabel: fmtNum(r.metrosTotales),
+    bValueLabel: r.mpIdeal != null ? fmtNum(r.mpIdeal) : '—',
+  }));
+  return {
+    rendHtml: svgHBarChart(rendItems, { width, rowH: 26, maxV: 150, refLines: [{ value: 85, label: '85%' }, { value: 100, label: '100%' }] }),
+    metrosHtml: svgHBarChartPaired(metrosItems, { width, rowH: 34, aLabel: 'Metros reales', bLabel: 'Metro ideal' }),
+  };
+}
+
+function renderPerfCharts() {
+  const rows = getSelectedPerfRows();
+  const built = buildPerfChartsHtml(rows, containerWidth('perfChartRendimiento'));
+  document.getElementById('perfChartRendimiento').innerHTML = built.rendHtml;
+  document.getElementById('perfChartMetros').innerHTML = built.metrosHtml;
+}
+
+function exportPerfPdf() {
+  const rows = getSelectedPerfRows();
+  if (!rows.length) return;
+  const showMina = currentUser.role === 'supervisor';
+  const logoImg = document.getElementById('logoImgLight');
+  const logoSrc = logoImg ? logoImg.src : '';
+  const fecha = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+  const built = buildPerfChartsHtml(rows, 680);
+
+  const rowsHtml = rows.map(r => `<tr>
+    <td>${esc(r.referencia)}</td><td>${esc(r.herramienta)}</td><td>${esc(r.codigo)}</td>
+    ${showMina ? `<td>${esc(r.mina)}</td>` : ''}
+    <td class="num">${fmtNum(r.metrosTotales)}</td>
+    <td class="num">${r.mpIdeal != null ? fmtNum(r.mpIdeal) : '—'}</td>
+    <td class="num">${r.pctRendimiento != null ? r.pctRendimiento.toFixed(0) + '%' : '—'}</td>
+    <td>${esc(r.ultimaFecha || '—')}</td>
+  </tr>`).join('');
+
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>CoreTech · Panel de rendimiento</title>
+<style>
+  :root{ --navy:#183058; --red:#D64545; --orange:#E8722C; --green:#1BAF7A; --border:#DFE4EC; --text:#16233C; --text-dim:#5B6579; --gray3:#C4C4C4; }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:var(--text); margin:28px;}
+  header{display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:2px solid var(--navy); padding-bottom:12px; margin-bottom:18px;}
+  header img{height:34px;}
+  h1{font-size:19px; color:var(--navy); margin:0;}
+  .meta{color:var(--text-dim); font-size:11.5px; margin:3px 0 0;}
+  h2{font-size:14px; color:var(--navy); margin:24px 0 6px;}
+  table{width:100%; border-collapse:collapse; font-size:11.5px; margin-top:6px;}
+  th,td{border-bottom:1px solid var(--border); padding:6px 8px; text-align:left;}
+  th{color:var(--text-dim); font-weight:700; text-transform:uppercase; font-size:9.5px; letter-spacing:.03em;}
+  td.num, th.num{text-align:right; font-variant-numeric:tabular-nums;}
+  .legend{font-size:11px; color:var(--text-dim); margin:4px 0 0;}
+  .legend span{margin-right:16px;}
+  .dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px;}
+  svg{max-width:100%; height:auto;}
+  .bar-label{font-size:10.5px; fill:var(--text-dim);}
+  .bar-value{font-size:10.5px; font-weight:700; fill:var(--text);}
+  .ref-line{stroke:var(--text-dim); stroke-width:1; stroke-dasharray:3 3;}
+  .badge-partial{font-size:9.5px; fill:var(--text-dim); font-weight:600;}
+  .chart-legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--text-dim); margin-bottom:6px;}
+  .legend-item{display:inline-flex; align-items:center; gap:5px;}
+  .legend-dot{width:9px; height:9px; border-radius:2px; display:inline-block; flex:none;}
+  footer{margin-top:26px; font-size:9.5px; color:var(--text-dim); border-top:1px solid var(--border); padding-top:8px;}
+  @media print{ body{margin:12mm;} h2{page-break-after:avoid;} tr{page-break-inside:avoid;} }
+</style></head>
+<body>
+  <header>
+    ${logoSrc ? `<img src="${logoSrc}" alt="CORE TECH">` : '<div></div>'}
+    <div style="text-align:right;">
+      <h1>Panel de rendimiento</h1>
+      <p class="meta">Generado el ${esc(fecha)} · ${esc(currentUser.email || '')} (${esc(ROLE_LABELS[currentUser.role] || currentUser.role)})</p>
+    </div>
+  </header>
+  <p class="legend">
+    <span><span class="dot" style="background:var(--red)"></span>Bajo 85% de lo ideal</span>
+    <span><span class="dot" style="background:var(--orange)"></span>Entre 85% y 100%</span>
+    <span><span class="dot" style="background:var(--green)"></span>100% o más</span>
+  </p>
+  <h2>% de rendimiento por herramienta</h2>
+  ${built.rendHtml}
+  <h2>Metros reales vs. metro ideal</h2>
+  ${built.metrosHtml}
+  <h2>Detalle (${rows.length} herramienta${rows.length === 1 ? '' : 's'})</h2>
+  <table>
+    <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th>${showMina ? '<th>Mina</th>' : ''}<th class="num">Metros Totales</th><th class="num">MP Ideal</th><th class="num">% Rendimiento</th><th>Última Fecha</th></tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  <footer>CoreTech · Aris Mining — documento generado automáticamente desde el panel de rendimiento. No incluye información de costos.</footer>
+</body></html>`;
+
+  // Se imprime desde un iframe oculto en vez de window.open(): un popup real
+  // lo bloquean casi todos los navegadores incluso con un clic directo del
+  // usuario, mientras que un iframe no dispara ningún bloqueador.
+  let frame = document.getElementById('perfPrintFrame');
+  if (!frame) {
+    frame = document.createElement('iframe');
+    frame.id = 'perfPrintFrame';
+    frame.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0;';
+    document.body.appendChild(frame);
+  }
+  frame.onload = () => {
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    catch (e) { /* si el navegador bloquea el print automático, el reporte queda visible en el iframe */ }
+  };
+  const doc = frame.contentDocument || frame.contentWindow.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+}
+
+function renderPerfTable() {
+  let rows = getFilteredPerfRows();
   rows = rows.slice().sort((a, b) => (a.pctRendimiento ?? 999) - (b.pctRendimiento ?? 999));
 
   const showMina = currentUser.role === 'supervisor';
@@ -1266,8 +1462,9 @@ function renderPerfTable() {
   perfState.page = Math.min(perfState.page, totalPages);
   const pageRows = rows.slice((perfState.page - 1) * PERF_PAGE_SIZE, perfState.page * PERF_PAGE_SIZE);
 
-  const thead = `<tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th>${showMina ? '<th>Mina</th>' : ''}<th class="num">Metros Totales</th><th class="num">MP Ideal</th><th class="num">Rango Aceptable</th><th class="num">% Rendimiento</th><th>Última Fecha de Reporte</th></tr>`;
+  const thead = `<tr><th class="num" style="width:32px;"><input type="checkbox" class="perf-select-all-chk" id="perfSelectAllPage" title="Seleccionar visibles en esta página"></th><th>Referencia</th><th>Herramienta</th><th>Código Interno</th>${showMina ? '<th>Mina</th>' : ''}<th class="num">Metros Totales</th><th class="num">MP Ideal</th><th class="num">Rango Aceptable</th><th class="num">% Rendimiento</th><th>Última Fecha de Reporte</th></tr>`;
   const tbody = pageRows.map(r => `<tr>
+    <td class="num"><input type="checkbox" class="perf-row-chk" data-codigo="${esc(r.codigo)}" ${perfState.selected.has(r.codigo) ? 'checked' : ''}></td>
     <td>${esc(r.referencia)}</td><td>${esc(r.herramienta)}</td><td>${esc(r.codigo)}</td>
     ${showMina ? `<td>${esc(r.mina)}</td>` : ''}
     <td class="num">${fmtNum(r.metrosTotales)}</td>
@@ -1278,7 +1475,7 @@ function renderPerfTable() {
   </tr>`).join('');
 
   document.getElementById('perfTableHead').innerHTML = thead;
-  document.getElementById('perfTableBody').innerHTML = tbody || `<tr><td colspan="${showMina ? 8 : 7}" class="empty-note">Sin resultados.</td></tr>`;
+  document.getElementById('perfTableBody').innerHTML = tbody || `<tr><td colspan="${showMina ? 9 : 8}" class="empty-note">Sin resultados.</td></tr>`;
   document.getElementById('perfPagination').innerHTML = `
     <button class="small" id="perfPgPrev" ${perfState.page <= 1 ? 'disabled' : ''}>← Anterior</button>
     <span>Página ${perfState.page} de ${totalPages} · ${fmtNum(total)} filas</span>
@@ -1287,6 +1484,18 @@ function renderPerfTable() {
   const prevBtn = document.getElementById('perfPgPrev'), nextBtn = document.getElementById('perfPgNext');
   if (prevBtn) prevBtn.addEventListener('click', () => { perfState.page--; renderPerfTable(); });
   if (nextBtn) nextBtn.addEventListener('click', () => { perfState.page++; renderPerfTable(); });
+
+  const selectAllPage = document.getElementById('perfSelectAllPage');
+  const allPageSelected = pageRows.length > 0 && pageRows.every(r => perfState.selected.has(r.codigo));
+  selectAllPage.checked = allPageSelected;
+  selectAllPage.addEventListener('change', (e) => {
+    pageRows.forEach(r => { if (e.target.checked) perfState.selected.add(r.codigo); else perfState.selected.delete(r.codigo); });
+    renderPerfTable();
+  });
+
+  updatePerfSelectionBar();
+  const chartPanel = document.getElementById('perfChartPanel');
+  if (chartPanel && !chartPanel.hidden) renderPerfCharts();
 }
 function populatePresentationMineSelect() {
   const sel = document.getElementById('presentationMineSelect');
