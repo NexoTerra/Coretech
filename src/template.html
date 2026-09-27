@@ -82,6 +82,7 @@ __CSS__
       <p class="subtitle" id="perfSubtitle"></p>
     </div>
     <div class="topbar-actions">
+      <button id="perfGoToolsBtn" class="ghost" hidden>Códigos y despachos</button>
       <span class="user-badge" id="perfUserBadge"></span>
       <button id="perfLogoutBtn" class="ghost">Cerrar sesión</button>
     </div>
@@ -193,6 +194,137 @@ __CSS__
         <thead><tr><th>Herramienta</th><th>Código Interno</th><th>Equipo</th><th>Tipo</th><th>Operador</th><th class="num">Metros</th><th></th></tr></thead>
         <tbody id="drTodayBody"></tbody>
       </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Dar de baja una herramienta</h3>
+    <p class="chart-sub">Busca el código de la herramienta que cumplió su ciclo o falló, y regístralo — esto la retira del reporte diario.</p>
+    <div class="filterbar">
+      <div class="filter-group" style="flex:1; min-width:260px;">
+        <label>Buscar herramienta activa</label>
+        <input type="search" id="bajaSearch" placeholder="Código, referencia, herramienta…">
+      </div>
+    </div>
+    <div class="table-wrap" id="bajaResultsWrap" hidden>
+      <table>
+        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Equipo</th><th class="num">Metros Acumulados</th><th></th></tr></thead>
+        <tbody id="bajaResultsBody"></tbody>
+      </table>
+    </div>
+    <p class="empty-note" id="bajaEmptyNote" hidden></p>
+
+    <div class="card" id="bajaFormCard" hidden style="background:var(--surface-2); margin-top:14px;">
+      <h3 id="bajaFormTitle">Dar de baja</h3>
+      <div class="filterbar">
+        <div class="filter-group">
+          <label>Fecha de baja</label>
+          <input type="date" id="bajaFecha">
+        </div>
+        <div class="filter-group">
+          <label>Modo de baja</label>
+          <select id="bajaModo">
+            <option value="fin_vida">Cumplió su vida útil</option>
+            <option value="falla">Falla prematura / descarte anticipado</option>
+          </select>
+        </div>
+        <div class="filter-group" id="bajaCausaGroup" hidden>
+          <label>Causa de descarte</label>
+          <select id="bajaCausa"><option value="">Selecciona…</option></select>
+        </div>
+        <div class="filter-group" id="bajaFallaGroup" hidden>
+          <label>Modo de falla</label>
+          <select id="bajaFalla"><option value="">Selecciona…</option></select>
+        </div>
+      </div>
+      <p class="login-error" id="bajaError" hidden></p>
+      <div class="perf-selection-bar">
+        <button class="small ghost" id="bajaCancelBtn" type="button">Cancelar</button>
+        <button class="small primary" id="bajaConfirmBtn" type="button">Dar de baja</button>
+      </div>
+    </div>
+    <p class="chart-sub" id="bajaSuccess" hidden></p>
+  </section>
+</div>
+
+<!-- Pantalla del Supervisor: registrar códigos nuevos (altas) y despachos a
+     mina/equipo. Un código sin mina queda "en bodega" (RESERVA) hasta que se
+     despache. -->
+<div id="toolsScreen">
+  <div class="screen-header">
+    <div>
+      <h1>Códigos y despachos</h1>
+      <p class="subtitle">Registra herramientas nuevas y despáchalas a una mina y un equipo.</p>
+    </div>
+    <div class="topbar-actions">
+      <button id="toolsBackBtn" class="ghost">← Panel de rendimiento</button>
+      <span class="user-badge" id="toolsUserBadge"></span>
+      <button id="toolsLogoutBtn" class="ghost">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <section class="card">
+    <h3>Registrar código nuevo</h3>
+    <p class="chart-sub">Si ya sabes a qué mina y equipo va, complétalos y queda despachada de una vez. Si la dejas sin mina, queda en bodega para despacharla después.</p>
+    <div class="filterbar">
+      <div class="filter-group">
+        <label>Código de marcado</label>
+        <input type="text" id="altaCodigo" placeholder="Ej: Y412">
+      </div>
+      <div class="filter-group" style="min-width:260px;">
+        <label>Referencia</label>
+        <select id="altaReferencia"><option value="">Selecciona…</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Fecha de entrega</label>
+        <input type="date" id="altaFecha">
+      </div>
+      <div class="filter-group">
+        <label>Mina (opcional)</label>
+        <select id="altaMina"><option value="">Dejar en bodega</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Equipo</label>
+        <input type="text" id="altaEquipo" placeholder="Ej: JUMBO-8" disabled>
+      </div>
+    </div>
+    <p class="login-error" id="altaError" hidden></p>
+    <p class="chart-sub" id="altaSuccess" hidden></p>
+    <div class="perf-selection-bar">
+      <button class="small primary" id="altaSaveBtn" type="button">Registrar</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>En bodega — sin despachar</h3>
+    <p class="chart-sub">Códigos ya registrados que todavía no se han asignado a una mina y un equipo.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Equipo</th><th>Fecha</th><th></th></tr></thead>
+        <tbody id="reservaBody"></tbody>
+      </table>
+    </div>
+    <div class="card" id="despachoFormCard" hidden style="background:var(--surface-2); margin-top:14px;">
+      <h3 id="despachoFormTitle">Despachar</h3>
+      <div class="filterbar">
+        <div class="filter-group">
+          <label>Mina</label>
+          <select id="despachoMina"><option value="">Selecciona…</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Equipo</label>
+          <input type="text" id="despachoEquipo" placeholder="Ej: JUMBO-8">
+        </div>
+        <div class="filter-group">
+          <label>Fecha de despacho</label>
+          <input type="date" id="despachoFecha">
+        </div>
+      </div>
+      <p class="login-error" id="despachoError" hidden></p>
+      <div class="perf-selection-bar">
+        <button class="small ghost" id="despachoCancelBtn" type="button">Cancelar</button>
+        <button class="small primary" id="despachoConfirmBtn" type="button">Confirmar despacho</button>
+      </div>
     </div>
   </section>
 </div>

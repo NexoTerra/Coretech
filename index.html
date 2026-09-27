@@ -50,17 +50,17 @@ body{
 
 /* ---- login gate ---- */
 body.authed #loginScreen{display:none;}
-#app, #hubScreen, #usersScreen, #perfScreen, #dailyReportScreen{display:none;}
+#app, #hubScreen, #usersScreen, #perfScreen, #dailyReportScreen, #toolsScreen{display:none;}
 body.screen-hub #hubScreen{display:flex;}
 body.screen-app #app{display:block;}
 body.screen-users #usersScreen{display:block;}
 body.screen-perf #perfScreen{display:block;}
-body.screen-daily-report #dailyReportScreen{display:block;}
+body.screen-daily-report #dailyReportScreen{display:flex;}
+body.screen-tools #toolsScreen{display:flex;}
 #perfScreen{max-width:1400px; margin:0 auto; padding:20px 24px 60px;}
 #perfScreen .screen-header{max-width:none; margin:0 0 18px; padding:0;}
-#dailyReportScreen{max-width:1200px; margin:0 auto; padding:20px 24px 60px; flex-direction:column; gap:20px;}
-body.screen-daily-report #dailyReportScreen{display:flex;}
-#dailyReportScreen .screen-header{max-width:none; margin:0; padding:0;}
+#dailyReportScreen, #toolsScreen{max-width:1200px; margin:0 auto; padding:20px 24px 60px; flex-direction:column; gap:20px;}
+#dailyReportScreen .screen-header, #toolsScreen .screen-header{max-width:none; margin:0; padding:0;}
 #loginScreen{
   min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
 }
@@ -439,6 +439,7 @@ footer b{color:var(--text-dim);}
       <p class="subtitle" id="perfSubtitle"></p>
     </div>
     <div class="topbar-actions">
+      <button id="perfGoToolsBtn" class="ghost" hidden>Códigos y despachos</button>
       <span class="user-badge" id="perfUserBadge"></span>
       <button id="perfLogoutBtn" class="ghost">Cerrar sesión</button>
     </div>
@@ -550,6 +551,137 @@ footer b{color:var(--text-dim);}
         <thead><tr><th>Herramienta</th><th>Código Interno</th><th>Equipo</th><th>Tipo</th><th>Operador</th><th class="num">Metros</th><th></th></tr></thead>
         <tbody id="drTodayBody"></tbody>
       </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Dar de baja una herramienta</h3>
+    <p class="chart-sub">Busca el código de la herramienta que cumplió su ciclo o falló, y regístralo — esto la retira del reporte diario.</p>
+    <div class="filterbar">
+      <div class="filter-group" style="flex:1; min-width:260px;">
+        <label>Buscar herramienta activa</label>
+        <input type="search" id="bajaSearch" placeholder="Código, referencia, herramienta…">
+      </div>
+    </div>
+    <div class="table-wrap" id="bajaResultsWrap" hidden>
+      <table>
+        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Equipo</th><th class="num">Metros Acumulados</th><th></th></tr></thead>
+        <tbody id="bajaResultsBody"></tbody>
+      </table>
+    </div>
+    <p class="empty-note" id="bajaEmptyNote" hidden></p>
+
+    <div class="card" id="bajaFormCard" hidden style="background:var(--surface-2); margin-top:14px;">
+      <h3 id="bajaFormTitle">Dar de baja</h3>
+      <div class="filterbar">
+        <div class="filter-group">
+          <label>Fecha de baja</label>
+          <input type="date" id="bajaFecha">
+        </div>
+        <div class="filter-group">
+          <label>Modo de baja</label>
+          <select id="bajaModo">
+            <option value="fin_vida">Cumplió su vida útil</option>
+            <option value="falla">Falla prematura / descarte anticipado</option>
+          </select>
+        </div>
+        <div class="filter-group" id="bajaCausaGroup" hidden>
+          <label>Causa de descarte</label>
+          <select id="bajaCausa"><option value="">Selecciona…</option></select>
+        </div>
+        <div class="filter-group" id="bajaFallaGroup" hidden>
+          <label>Modo de falla</label>
+          <select id="bajaFalla"><option value="">Selecciona…</option></select>
+        </div>
+      </div>
+      <p class="login-error" id="bajaError" hidden></p>
+      <div class="perf-selection-bar">
+        <button class="small ghost" id="bajaCancelBtn" type="button">Cancelar</button>
+        <button class="small primary" id="bajaConfirmBtn" type="button">Dar de baja</button>
+      </div>
+    </div>
+    <p class="chart-sub" id="bajaSuccess" hidden></p>
+  </section>
+</div>
+
+<!-- Pantalla del Supervisor: registrar códigos nuevos (altas) y despachos a
+     mina/equipo. Un código sin mina queda "en bodega" (RESERVA) hasta que se
+     despache. -->
+<div id="toolsScreen">
+  <div class="screen-header">
+    <div>
+      <h1>Códigos y despachos</h1>
+      <p class="subtitle">Registra herramientas nuevas y despáchalas a una mina y un equipo.</p>
+    </div>
+    <div class="topbar-actions">
+      <button id="toolsBackBtn" class="ghost">← Panel de rendimiento</button>
+      <span class="user-badge" id="toolsUserBadge"></span>
+      <button id="toolsLogoutBtn" class="ghost">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <section class="card">
+    <h3>Registrar código nuevo</h3>
+    <p class="chart-sub">Si ya sabes a qué mina y equipo va, complétalos y queda despachada de una vez. Si la dejas sin mina, queda en bodega para despacharla después.</p>
+    <div class="filterbar">
+      <div class="filter-group">
+        <label>Código de marcado</label>
+        <input type="text" id="altaCodigo" placeholder="Ej: Y412">
+      </div>
+      <div class="filter-group" style="min-width:260px;">
+        <label>Referencia</label>
+        <select id="altaReferencia"><option value="">Selecciona…</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Fecha de entrega</label>
+        <input type="date" id="altaFecha">
+      </div>
+      <div class="filter-group">
+        <label>Mina (opcional)</label>
+        <select id="altaMina"><option value="">Dejar en bodega</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Equipo</label>
+        <input type="text" id="altaEquipo" placeholder="Ej: JUMBO-8" disabled>
+      </div>
+    </div>
+    <p class="login-error" id="altaError" hidden></p>
+    <p class="chart-sub" id="altaSuccess" hidden></p>
+    <div class="perf-selection-bar">
+      <button class="small primary" id="altaSaveBtn" type="button">Registrar</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>En bodega — sin despachar</h3>
+    <p class="chart-sub">Códigos ya registrados que todavía no se han asignado a una mina y un equipo.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Equipo</th><th>Fecha</th><th></th></tr></thead>
+        <tbody id="reservaBody"></tbody>
+      </table>
+    </div>
+    <div class="card" id="despachoFormCard" hidden style="background:var(--surface-2); margin-top:14px;">
+      <h3 id="despachoFormTitle">Despachar</h3>
+      <div class="filterbar">
+        <div class="filter-group">
+          <label>Mina</label>
+          <select id="despachoMina"><option value="">Selecciona…</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Equipo</label>
+          <input type="text" id="despachoEquipo" placeholder="Ej: JUMBO-8">
+        </div>
+        <div class="filter-group">
+          <label>Fecha de despacho</label>
+          <input type="date" id="despachoFecha">
+        </div>
+      </div>
+      <p class="login-error" id="despachoError" hidden></p>
+      <div class="perf-selection-bar">
+        <button class="small ghost" id="despachoCancelBtn" type="button">Cancelar</button>
+        <button class="small primary" id="despachoConfirmBtn" type="button">Confirmar despacho</button>
+      </div>
     </div>
   </section>
 </div>
@@ -4112,7 +4244,7 @@ async function loadSharedBundleIntoApp() {
   } catch (e) { /* se queda con el bundle base embebido */ }
 }
 function showScreen(name) {
-  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users', 'screen-perf', 'screen-daily-report');
+  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users', 'screen-perf', 'screen-daily-report', 'screen-tools');
   document.body.classList.add('screen-' + name);
 }
 function mineInfo(slug) {
@@ -4202,6 +4334,7 @@ async function enterPerfScreen() {
     ? 'Metraje y rendimiento por pieza — las 3 minas, sin costos'
     : `Metraje y rendimiento por pieza — ${minesToLoad.map(m => m.label).join(', ') || 'sin mina asignada'}`;
   document.getElementById('perfMinaFilterGroup').hidden = !isSupervisor;
+  document.getElementById('perfGoToolsBtn').hidden = !isSupervisor;
 
   const allRows = [];
   for (const m of minesToLoad) {
@@ -4227,6 +4360,11 @@ function wirePerfEvents() {
   if (!logoutBtn.dataset.wired) {
     logoutBtn.dataset.wired = '1';
     logoutBtn.addEventListener('click', handleLogout);
+  }
+  const goToolsBtn = document.getElementById('perfGoToolsBtn');
+  if (!goToolsBtn.dataset.wired) {
+    goToolsBtn.dataset.wired = '1';
+    goToolsBtn.addEventListener('click', enterToolsScreen);
   }
   const search = document.getElementById('perfSearch');
   if (!search.dataset.wired) {
@@ -4490,7 +4628,9 @@ function renderPerfTable() {
 // a Segovia por ahora.
 const MINAS_SEGOVIA = ['SANDRA K', 'EL SILENCIO', 'PROVIDENCIA'];
 const TIPOS_PERFORACION = ['AVANCE', 'ESCARIADO', 'SOSTENIMIENTO', 'ESCAREADORA'];
-let dailyReportState = { fecha: '', mina: '', equipo: '', tipo: '', operador: '', search: '', activeTools: [] };
+let dailyReportState = { fecha: '', mina: '', equipo: '', tipo: '', operador: '', search: '', activeTools: [], bajaTools: [], bajaSelected: null };
+const CAUSAS_DESCARTE = ['GEOLOGIA', 'DAÑO OPERACIONAL', 'CONDICION MECANICA', 'DESGASTE', 'SERVICIOS MINA', 'PARAMETROS DE PERFORACION', 'ROSCA INCRUSTADA', 'SIN ESPECIFICAR'];
+const MODOS_FALLA = ['ROTURA DEL CUERPO', 'ROTURA ROSCA T38', 'ROTURA ROSCA R32', 'ROTURA ROSCA R28', 'DESGASTE ROSCA T38', 'DESGASTE ROSCA R32', 'ROSCA INCRUSTADA', 'PERDIDA DE BOTON', 'ROTURA DE BOTON', 'PERDIDA EN TERRENO', 'OP/SIN ESPECIFICAR'];
 
 function fmtFechaLarga(fechaStr) {
   if (!fechaStr) return '';
@@ -4501,7 +4641,7 @@ async function enterDigitalizadorScreen() {
   showScreen('daily-report');
   document.getElementById('dailyReportUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
   const today = new Date().toISOString().slice(0, 10);
-  dailyReportState = { fecha: today, mina: '', equipo: '', tipo: '', operador: '', search: '', activeTools: [] };
+  dailyReportState = { fecha: today, mina: '', equipo: '', tipo: '', operador: '', search: '', activeTools: [], bajaTools: [], bajaSelected: null };
 
   const fechaInput = document.getElementById('drFecha');
   fechaInput.value = today;
@@ -4513,6 +4653,16 @@ async function enterDigitalizadorScreen() {
   document.getElementById('drSearch').value = '';
   document.getElementById('drError').hidden = true;
   document.getElementById('drSuccess').hidden = true;
+
+  document.getElementById('bajaFecha').value = today;
+  document.getElementById('bajaFecha').max = today;
+  document.getElementById('bajaCausa').innerHTML = '<option value="">Selecciona…</option>' + CAUSAS_DESCARTE.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  document.getElementById('bajaFalla').innerHTML = '<option value="">Selecciona…</option>' + MODOS_FALLA.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('');
+  document.getElementById('bajaSearch').value = '';
+  document.getElementById('bajaResultsWrap').hidden = true;
+  document.getElementById('bajaEmptyNote').hidden = true;
+  document.getElementById('bajaFormCard').hidden = true;
+  document.getElementById('bajaSuccess').hidden = true;
 
   wireDailyReportEvents();
   renderDailyReportTable();
@@ -4563,6 +4713,114 @@ function wireDailyReportEvents() {
 
   const todayBody = document.getElementById('drTodayBody');
   if (!todayBody.dataset.wired) { todayBody.dataset.wired = '1'; todayBody.addEventListener('click', handleDeleteDailyReport); }
+
+  const bajaSearch = document.getElementById('bajaSearch');
+  if (!bajaSearch.dataset.wired) {
+    bajaSearch.dataset.wired = '1';
+    bajaSearch.addEventListener('input', (e) => { renderBajaResults(e.target.value); });
+    bajaSearch.addEventListener('focus', () => { if (!dailyReportState.bajaTools.length) loadBajaTools(); });
+  }
+  const bajaResultsBody = document.getElementById('bajaResultsBody');
+  if (!bajaResultsBody.dataset.wired) { bajaResultsBody.dataset.wired = '1'; bajaResultsBody.addEventListener('click', handleSelectBajaTool); }
+  const bajaModo = document.getElementById('bajaModo');
+  if (!bajaModo.dataset.wired) {
+    bajaModo.dataset.wired = '1';
+    bajaModo.addEventListener('change', (e) => {
+      const isFalla = e.target.value === 'falla';
+      document.getElementById('bajaCausaGroup').hidden = !isFalla;
+      document.getElementById('bajaFallaGroup').hidden = !isFalla;
+    });
+  }
+  const bajaCancelBtn = document.getElementById('bajaCancelBtn');
+  if (!bajaCancelBtn.dataset.wired) { bajaCancelBtn.dataset.wired = '1'; bajaCancelBtn.addEventListener('click', closeBajaForm); }
+  const bajaConfirmBtn = document.getElementById('bajaConfirmBtn');
+  if (!bajaConfirmBtn.dataset.wired) { bajaConfirmBtn.dataset.wired = '1'; bajaConfirmBtn.addEventListener('click', handleConfirmBaja); }
+}
+
+async function loadBajaTools() {
+  dailyReportState.bajaTools = await CTAuth.fetchMatch('piezas', { estado: 'ACTIVO' });
+}
+
+function renderBajaResults(search) {
+  const wrap = document.getElementById('bajaResultsWrap');
+  const emptyNote = document.getElementById('bajaEmptyNote');
+  const q = (search || '').trim().toLowerCase();
+  if (!q) { wrap.hidden = true; emptyNote.hidden = true; return; }
+  const rows = dailyReportState.bajaTools.filter(r => [r.codigo_marcado, r.ref_code, r.herramienta].some(v => String(v || '').toLowerCase().includes(q))).slice(0, 20);
+  if (!rows.length) {
+    wrap.hidden = true; emptyNote.hidden = false; emptyNote.textContent = 'Ninguna herramienta activa coincide con la búsqueda.';
+    return;
+  }
+  emptyNote.hidden = true; wrap.hidden = false;
+  document.getElementById('bajaResultsBody').innerHTML = rows.map(r => `<tr>
+    <td>${esc(r.ref_code || '—')}</td><td>${esc(r.herramienta || '—')}</td><td>${esc(r.codigo_marcado)}</td>
+    <td>${esc(r.mina || '—')}</td><td>${esc(r.equipo || '—')}</td>
+    <td class="num">${fmtNum(r.metros_perforados || 0)}</td>
+    <td><button type="button" class="small ghost dr-baja-pick-btn" data-codigo="${esc(r.codigo_marcado)}">Dar de baja</button></td>
+  </tr>`).join('');
+}
+
+function handleSelectBajaTool(e) {
+  const btn = e.target.closest('.dr-baja-pick-btn');
+  if (!btn) return;
+  const tool = dailyReportState.bajaTools.find(r => r.codigo_marcado === btn.dataset.codigo);
+  if (!tool) return;
+  dailyReportState.bajaSelected = tool;
+  document.getElementById('bajaFormTitle').textContent = `Dar de baja — ${tool.herramienta || tool.codigo_marcado} (${tool.codigo_marcado})`;
+  document.getElementById('bajaModo').value = 'fin_vida';
+  document.getElementById('bajaCausaGroup').hidden = true;
+  document.getElementById('bajaFallaGroup').hidden = true;
+  document.getElementById('bajaCausa').value = '';
+  document.getElementById('bajaFalla').value = '';
+  document.getElementById('bajaError').hidden = true;
+  document.getElementById('bajaSuccess').hidden = true;
+  document.getElementById('bajaFormCard').hidden = false;
+}
+
+function closeBajaForm() {
+  dailyReportState.bajaSelected = null;
+  document.getElementById('bajaFormCard').hidden = true;
+}
+
+async function handleConfirmBaja() {
+  const tool = dailyReportState.bajaSelected;
+  const errEl = document.getElementById('bajaError');
+  errEl.hidden = true;
+  if (!tool) return;
+  const fecha = document.getElementById('bajaFecha').value;
+  const modo = document.getElementById('bajaModo').value;
+  const causa = document.getElementById('bajaCausa').value;
+  const falla = document.getElementById('bajaFalla').value;
+  if (!fecha) { errEl.hidden = false; errEl.textContent = 'Elige la fecha de baja.'; return; }
+  if (modo === 'falla' && (!causa || !falla)) { errEl.hidden = false; errEl.textContent = 'Elige la causa de descarte y el modo de falla.'; return; }
+  if (!confirm(`¿Dar de baja "${tool.herramienta || tool.codigo_marcado}" (${tool.codigo_marcado})? Ya no aparecerá en el reporte diario.`)) return;
+
+  const confirmBtn = document.getElementById('bajaConfirmBtn');
+  confirmBtn.disabled = true;
+  try {
+    await CTAuth.updateMatch('piezas', { codigo_marcado: tool.codigo_marcado }, {
+      estado: 'INACTIVO',
+      motivo_bucket: modo === 'falla' ? 'CONDICION_OPERATIVA' : 'FIN_VIDA_UTIL',
+      causa: modo === 'falla' ? causa : null,
+      falla: modo === 'falla' ? falla : null,
+      fecha_final: fecha,
+    });
+    dailyReportState.bajaTools = dailyReportState.bajaTools.filter(r => r.codigo_marcado !== tool.codigo_marcado);
+    if (dailyReportState.activeTools.some(r => r.codigo_marcado === tool.codigo_marcado)) {
+      dailyReportState.activeTools = dailyReportState.activeTools.filter(r => r.codigo_marcado !== tool.codigo_marcado);
+      renderDailyReportTable();
+    }
+    closeBajaForm();
+    document.getElementById('bajaSearch').value = '';
+    document.getElementById('bajaResultsWrap').hidden = true;
+    const okEl = document.getElementById('bajaSuccess');
+    okEl.hidden = false;
+    okEl.textContent = `"${tool.codigo_marcado}" dada de baja el ${fmtFechaLarga(fecha)}.`;
+  } catch (e) {
+    errEl.hidden = false; errEl.textContent = 'No se pudo dar de baja (' + e.message + ').';
+  } finally {
+    confirmBtn.disabled = false;
+  }
 }
 
 async function onDailyMinaChange(mina) {
@@ -4725,6 +4983,164 @@ async function handleDeleteDailyReport(e) {
     alert('No se pudo eliminar el reporte (' + err.message + ').');
   } finally {
     btn.disabled = false;
+  }
+}
+
+// ============ códigos y despachos (Supervisor) ============
+let toolsState = { catalog: [], reserva: [], despachoCodigo: null };
+
+async function enterToolsScreen() {
+  showScreen('tools');
+  document.getElementById('toolsUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('altaFecha').value = today;
+  document.getElementById('altaFecha').max = today;
+  document.getElementById('altaCodigo').value = '';
+  document.getElementById('altaEquipo').value = '';
+  document.getElementById('altaError').hidden = true;
+  document.getElementById('altaSuccess').hidden = true;
+  document.getElementById('despachoFecha').value = today;
+  document.getElementById('despachoFecha').max = today;
+
+  const minaOptions = MINAS_SEGOVIA.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  document.getElementById('altaMina').innerHTML = '<option value="">Dejar en bodega</option>' + minaOptions;
+  document.getElementById('despachoMina').innerHTML = '<option value="">Selecciona…</option>' + minaOptions;
+
+  toolsState.catalog = await CTAuth.fetchTable('catalog_refs');
+  toolsState.catalog.sort((a, b) => (a.ref_code || '').localeCompare(b.ref_code || ''));
+  document.getElementById('altaReferencia').innerHTML = '<option value="">Selecciona…</option>' +
+    toolsState.catalog.map(c => `<option value="${esc(c.ref_code)}">${esc(c.ref_code)}${c.descripcion ? ' — ' + esc(c.descripcion) : ''}</option>`).join('');
+
+  wireToolsEvents();
+  await renderReservaList();
+}
+
+function wireToolsEvents() {
+  const backBtn = document.getElementById('toolsBackBtn');
+  if (!backBtn.dataset.wired) { backBtn.dataset.wired = '1'; backBtn.addEventListener('click', enterPerfScreen); }
+  const logoutBtn = document.getElementById('toolsLogoutBtn');
+  if (!logoutBtn.dataset.wired) { logoutBtn.dataset.wired = '1'; logoutBtn.addEventListener('click', handleLogout); }
+
+  const altaMina = document.getElementById('altaMina');
+  if (!altaMina.dataset.wired) {
+    altaMina.dataset.wired = '1';
+    altaMina.addEventListener('change', (e) => {
+      const equipoInput = document.getElementById('altaEquipo');
+      equipoInput.disabled = !e.target.value;
+      if (!e.target.value) equipoInput.value = '';
+    });
+  }
+  const altaSaveBtn = document.getElementById('altaSaveBtn');
+  if (!altaSaveBtn.dataset.wired) { altaSaveBtn.dataset.wired = '1'; altaSaveBtn.addEventListener('click', handleRegistrarCodigo); }
+
+  const reservaBody = document.getElementById('reservaBody');
+  if (!reservaBody.dataset.wired) { reservaBody.dataset.wired = '1'; reservaBody.addEventListener('click', handleDespacharClick); }
+  const despachoCancelBtn = document.getElementById('despachoCancelBtn');
+  if (!despachoCancelBtn.dataset.wired) { despachoCancelBtn.dataset.wired = '1'; despachoCancelBtn.addEventListener('click', closeDespachoForm); }
+  const despachoConfirmBtn = document.getElementById('despachoConfirmBtn');
+  if (!despachoConfirmBtn.dataset.wired) { despachoConfirmBtn.dataset.wired = '1'; despachoConfirmBtn.addEventListener('click', handleConfirmDespacho); }
+}
+
+async function renderReservaList() {
+  toolsState.reserva = await CTAuth.fetchMatch('piezas', { estado: 'RESERVA' });
+  toolsState.reserva.sort((a, b) => (a.codigo_marcado || '').localeCompare(b.codigo_marcado || ''));
+  const tbody = document.getElementById('reservaBody');
+  tbody.innerHTML = toolsState.reserva.length ? toolsState.reserva.map(r => `<tr>
+    <td>${esc(r.ref_code || '—')}</td><td>${esc(r.herramienta || '—')}</td><td>${esc(r.codigo_marcado)}</td>
+    <td>${esc(r.mina || '—')}</td><td>${esc(r.equipo || '—')}</td>
+    <td>${r.fecha_inicio ? esc(r.fecha_inicio) : '—'}</td>
+    <td><button type="button" class="small ghost tools-despachar-btn" data-codigo="${esc(r.codigo_marcado)}">Despachar</button></td>
+  </tr>`).join('') : `<tr><td colspan="7" class="empty-note">No hay códigos en bodega — todo lo registrado ya fue despachado.</td></tr>`;
+}
+
+async function handleRegistrarCodigo() {
+  const errEl = document.getElementById('altaError'); errEl.hidden = true;
+  const okEl = document.getElementById('altaSuccess'); okEl.hidden = true;
+
+  const codigo = document.getElementById('altaCodigo').value.trim().toUpperCase();
+  const refCode = document.getElementById('altaReferencia').value;
+  const fecha = document.getElementById('altaFecha').value;
+  const mina = document.getElementById('altaMina').value;
+  const equipo = document.getElementById('altaEquipo').value.trim().toUpperCase();
+
+  if (!codigo) { errEl.hidden = false; errEl.textContent = 'Escribe el código de marcado.'; return; }
+  if (!refCode) { errEl.hidden = false; errEl.textContent = 'Elige la referencia.'; return; }
+  if (!fecha) { errEl.hidden = false; errEl.textContent = 'Elige la fecha de entrega.'; return; }
+  if (mina && !equipo) { errEl.hidden = false; errEl.textContent = 'Escribe el equipo al que se despacha.'; return; }
+
+  const saveBtn = document.getElementById('altaSaveBtn');
+  saveBtn.disabled = true; saveBtn.textContent = 'Registrando…';
+  try {
+    const existing = await CTAuth.fetchMatch('piezas', { codigo_marcado: codigo });
+    if (existing.length) { errEl.hidden = false; errEl.textContent = `El código "${codigo}" ya existe (mina: ${existing[0].mina || 'en bodega'}).`; return; }
+
+    const ref = toolsState.catalog.find(c => c.ref_code === refCode);
+    await CTAuth.insertRows('piezas', [{
+      codigo_marcado: codigo, ref_code: refCode, herramienta: ref ? ref.descripcion : null,
+      metros_perforados: 0, metro_garantizado: ref ? ref.metro_garantizado : null,
+      estado: mina ? 'ACTIVO' : 'RESERVA',
+      mina: mina || null, equipo: mina ? equipo : null,
+      fecha_inicio: mina ? fecha : null,
+      precio_usd: ref ? ref.precio : null,
+    }]);
+
+    okEl.hidden = false;
+    okEl.textContent = mina
+      ? `Código "${codigo}" registrado y despachado a ${mina} (${equipo}).`
+      : `Código "${codigo}" registrado en bodega.`;
+    document.getElementById('altaCodigo').value = '';
+    document.getElementById('altaReferencia').value = '';
+    document.getElementById('altaMina').value = '';
+    document.getElementById('altaEquipo').value = '';
+    document.getElementById('altaEquipo').disabled = true;
+    await renderReservaList();
+  } catch (e) {
+    errEl.hidden = false; errEl.textContent = 'No se pudo registrar el código (' + e.message + ').';
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = 'Registrar';
+  }
+}
+
+function handleDespacharClick(e) {
+  const btn = e.target.closest('.tools-despachar-btn');
+  if (!btn) return;
+  toolsState.despachoCodigo = btn.dataset.codigo;
+  const tool = toolsState.reserva.find(r => r.codigo_marcado === btn.dataset.codigo);
+  document.getElementById('despachoFormTitle').textContent = `Despachar — ${(tool && tool.herramienta) || btn.dataset.codigo} (${btn.dataset.codigo})`;
+  document.getElementById('despachoMina').value = '';
+  document.getElementById('despachoEquipo').value = '';
+  document.getElementById('despachoError').hidden = true;
+  document.getElementById('despachoFormCard').hidden = false;
+}
+
+function closeDespachoForm() {
+  toolsState.despachoCodigo = null;
+  document.getElementById('despachoFormCard').hidden = true;
+}
+
+async function handleConfirmDespacho() {
+  const codigo = toolsState.despachoCodigo;
+  const errEl = document.getElementById('despachoError'); errEl.hidden = true;
+  if (!codigo) return;
+  const mina = document.getElementById('despachoMina').value;
+  const equipo = document.getElementById('despachoEquipo').value.trim().toUpperCase();
+  const fecha = document.getElementById('despachoFecha').value;
+  if (!mina) { errEl.hidden = false; errEl.textContent = 'Elige la mina.'; return; }
+  if (!equipo) { errEl.hidden = false; errEl.textContent = 'Escribe el equipo.'; return; }
+  if (!fecha) { errEl.hidden = false; errEl.textContent = 'Elige la fecha de despacho.'; return; }
+
+  const confirmBtn = document.getElementById('despachoConfirmBtn');
+  confirmBtn.disabled = true;
+  try {
+    await CTAuth.updateMatch('piezas', { codigo_marcado: codigo }, {
+      estado: 'ACTIVO', mina, equipo, fecha_inicio: fecha,
+    });
+    closeDespachoForm();
+    await renderReservaList();
+  } catch (e) {
+    errEl.hidden = false; errEl.textContent = 'No se pudo despachar (' + e.message + ').';
+  } finally {
+    confirmBtn.disabled = false;
   }
 }
 
