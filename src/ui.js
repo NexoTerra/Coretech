@@ -398,9 +398,12 @@ function renderCpmPorSarta(bundle, life) {
   const series = sartaTotals.filter(s => s.months.length).map(s => {
     const byYm = new Map(s.months.map(m => [m.ym, m]));
     const label = s.sarta + (s.cpmIdeal !== null ? ` (ideal $${s.cpmIdeal.toFixed(2)})` : '');
-    return { name: label, values: months.map(ym => { const m = byYm.get(ym); return m ? m.cpmSarta : null; }) };
+    return {
+      name: label, refValue: s.cpmIdeal,
+      values: months.map(ym => { const m = byYm.get(ym); return m ? m.cpmSarta : null; }),
+    };
   });
-  chartEl.innerHTML = svgLineChart(months.map(ymLabel), series, { width: containerWidth('chartCpmSarta'), valueFmt: v => '$' + v.toFixed(2) });
+  chartEl.innerHTML = svgLineChart(months.map(ymLabel), series, { width: containerWidth('chartCpmSarta'), valueFmt: v => '$' + v.toFixed(2), showValues: true });
 }
 
 // ============ Metros por código dentro de cada referencia ============
@@ -469,9 +472,21 @@ function renderCPM(bundle, life) {
   const g = cpmGlobal(bundle, life);
   const rows = cpmPorHerramienta(bundle, life);
 
+  // El CPM ideal de esta ficha debe ser el valor FIJO asignado a la sarta
+  // (hoja DATOS KPIs) cuando el filtro de Sarta tiene una sola seleccionada
+  // — no el promedio ponderado de cpmGlobal, que cambia según qué piezas
+  // queden dentro del filtro activo (mes, mina, etc.) aunque el ideal de la
+  // sarta en sí nunca cambia.
+  const sartaSeleccionada = filters.sarta.length === 1 ? filters.sarta[0] : null;
+  const sartaIdeal = sartaSeleccionada ? (bundle.cpmIdealPorSarta || {})[sartaSeleccionada] : null;
+  const cpmIdealFicha = sartaIdeal != null ? sartaIdeal : g.cpmIdeal;
+  const cpmIdealSub = sartaIdeal != null
+    ? `Valor fijo asignado a la sarta "${sartaSeleccionada}"`
+    : 'Precio unitario / metro garantizado';
+
   const cards = [
     { label: 'CPM real', value: (g.cpmReal !== null ? 'USD ' + g.cpmReal.toFixed(3) : '—') + ' <small>/m</small>', sub: 'Precio unitario / metros realmente logrados' },
-    { label: 'CPM ideal', value: (g.cpmIdeal !== null ? 'USD ' + g.cpmIdeal.toFixed(3) : '—') + ' <small>/m</small>', sub: 'Precio unitario / metro garantizado' },
+    { label: 'CPM ideal', value: (cpmIdealFicha !== null ? 'USD ' + cpmIdealFicha.toFixed(3) : '—') + ' <small>/m</small>', sub: cpmIdealSub },
     { label: 'USD invertido', value: 'USD ' + fmtNum(Math.round(g.usdGastado)), sub: `${fmtNum(g.nConUsd)} piezas con precio registrado` },
     { label: 'Sobrecosto por bajo rendimiento', value: 'USD ' + fmtNum(Math.round(g.sobrecostoUSD)), sub: 'Piezas que no llegaron a su metro garantizado' },
   ];
@@ -586,7 +601,7 @@ function renderCPMTrend(bundle, life) {
       const byYm = new Map(r.months.map(m => [m.ym, m]));
       return { name: r.herramienta, values: months.map(ym => { const m = byYm.get(ym); return m && m.cpm !== null ? m.cpm : null; }) };
     });
-    chartEl.innerHTML = svgLineChart(months.map(ymLabel), series, { width: containerWidth(`cpmTrendChart_${si}`), valueFmt: v => '$' + v.toFixed(2) });
+    chartEl.innerHTML = svgLineChart(months.map(ymLabel), series, { width: containerWidth(`cpmTrendChart_${si}`), valueFmt: v => '$' + v.toFixed(2), showValues: true });
   });
 }
 

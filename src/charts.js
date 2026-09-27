@@ -211,8 +211,12 @@ function svgHBarChartPaired(items, opts) {
 }
 
 // Multi-series line chart (e.g. CPM por herramienta a través de varios meses).
-// categories: [string]; series: [{name, color?, values: [number|null]}] — un
-// valor null deja un hueco en la línea (mes sin dato) en vez de interpolar.
+// categories: [string]; series: [{name, color?, values: [number|null], refValue?}]
+// — un valor null deja un hueco en la línea (mes sin dato) en vez de interpolar.
+// refValue (opcional, por serie) dibuja una línea punteada horizontal del
+// mismo color de la serie — para un valor de referencia fijo (p.ej. el CPM
+// ideal de una sarta) que no varía mes a mes. opts.showValues dibuja la
+// etiqueta del valor junto a cada punto, además del tooltip al pasar el mouse.
 function svgLineChart(categories, series, opts) {
   opts = opts || {};
   const W = opts.width || 560, H = opts.height || 220;
@@ -221,7 +225,8 @@ function svgLineChart(categories, series, opts) {
   const usable = series.filter(s => s.values.some(v => v !== null && v !== undefined));
   if (!categories.length || !usable.length) return `<div class="empty-note">Sin datos para los filtros actuales.</div>`;
   const allVals = usable.flatMap(s => s.values.filter(v => v !== null && v !== undefined));
-  const maxV = opts.maxV || Math.max(...allVals) * 1.15;
+  const refVals = usable.map(s => s.refValue).filter(v => v !== null && v !== undefined);
+  const maxV = opts.maxV || Math.max(...allVals, ...refVals) * 1.15;
   const fmtV = opts.valueFmt || fmtCompact;
   const n = categories.length;
   const stepX = n > 1 ? plotW / (n - 1) : 0;
@@ -241,23 +246,30 @@ function svgLineChart(categories, series, opts) {
     labels += `<text x="${xAt(i).toFixed(1)}" y="${H - padB + 15}" text-anchor="middle" class="bar-label">${esc(truncateToWidth(cat, stepX || plotW, 9.5))}</text>`;
   });
 
-  let paths = '', legend = '';
+  let paths = '', legend = '', refLines = '';
   const palette = ['var(--ramp3)', 'var(--orange)', 'var(--green)', 'var(--ramp1)', 'var(--red)', 'var(--navy)', 'var(--purple)', 'var(--gold)'];
   usable.forEach((s, si) => {
     const color = s.color || palette[si % palette.length];
-    let d = '', drawing = false, dots = '';
+    let d = '', drawing = false, dots = '', valueLabels = '';
     s.values.forEach((v, i) => {
       if (v === null || v === undefined) { drawing = false; return; }
       const x = xAt(i), y = yAt(v);
       d += (drawing ? ' L ' : ' M ') + x.toFixed(1) + ',' + y.toFixed(1);
       drawing = true;
       dots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${color}"><title>${esc(s.name)} · ${esc(categories[i])}: ${fmtV(v)}</title></circle>`;
+      if (opts.showValues) {
+        valueLabels += `<text x="${x.toFixed(1)}" y="${(y - 7).toFixed(1)}" text-anchor="middle" class="bar-value" style="fill:${color}">${fmtV(v)}</text>`;
+      }
     });
-    paths += `<path d="${d.trim()}" fill="none" stroke="${color}" stroke-width="2"/>${dots}`;
+    paths += `<path d="${d.trim()}" fill="none" stroke="${color}" stroke-width="2"/>${dots}${valueLabels}`;
     legend += `<span class="legend-item"><span class="legend-dot" style="background:${color}"></span>${esc(s.name)}</span>`;
+    if (s.refValue !== null && s.refValue !== undefined) {
+      const ry = yAt(s.refValue);
+      refLines += `<line x1="${padL}" y1="${ry.toFixed(1)}" x2="${W - padR}" y2="${ry.toFixed(1)}" stroke="${color}" stroke-width="1.4" stroke-dasharray="5 4" opacity="0.6"><title>${esc(s.name)} · ideal: ${fmtV(s.refValue)}</title></line>`;
+    }
   });
 
-  return `<div class="chart-legend">${legend}</div><div style="overflow-x:auto;"><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="min-width:${Math.min(W,320)}px" role="img">${gridLines}${paths}${labels}</svg></div>`;
+  return `<div class="chart-legend">${legend}</div><div style="overflow-x:auto;"><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="min-width:${Math.min(W,320)}px" role="img">${gridLines}${refLines}${paths}${labels}</svg></div>`;
 }
 
 function rendPillClass(pct) {
