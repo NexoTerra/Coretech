@@ -492,6 +492,40 @@ function avgMetrosPorReferenciaPorMes(bundle, life) {
   return out;
 }
 
+// ---------- Minas donde una sarta realmente opera ----------
+// Dos sartas "hermanas" (ej. "Escareado" y "Escareado T1D") suelen compartir
+// 3 de sus 4 herramientas y diferir solo en una (el shank, típicamente) — esa
+// herramienta compartida sí tiene actividad amplia en todas las minas (por la
+// sarta hermana), pero eso no significa que ESTA sarta se use ahí. Una sarta
+// solo cuenta como "usada" en una mina si TODAS sus herramientas componentes
+// tuvieron actividad real ahí (intersección, no unión) — así, la variante que
+// tiene una herramienta exclusiva de una sola mina queda correctamente
+// acotada a esa mina, aunque sus otras 3 herramientas se vean por todos lados.
+function sartaMinasPorHerramienta(bundle) {
+  const { dict } = bundle;
+  const refMinas = new Map(); // refIdx -> Set(mina)
+  for (const l of bundle.life) {
+    if (!(l[3] > 0)) continue;
+    const refIdx = l[1], minaIdx = l[9];
+    if (refIdx === null || refIdx === undefined || minaIdx === null || minaIdx === undefined) continue;
+    const mina = dict.mina[minaIdx];
+    if (!mina) continue;
+    if (!refMinas.has(refIdx)) refMinas.set(refIdx, new Set());
+    refMinas.get(refIdx).add(mina);
+  }
+  const out = {};
+  for (const [sartaNombre, refcodes] of Object.entries(bundle.sartas || {})) {
+    let inter = null;
+    refcodes.forEach(refcode => {
+      const refIdx = dict.ref.indexOf(refcode);
+      const minas = refIdx >= 0 ? (refMinas.get(refIdx) || new Set()) : new Set();
+      inter = inter === null ? new Set(minas) : new Set([...inter].filter(m => minas.has(m)));
+    });
+    out[sartaNombre] = inter ? Array.from(inter) : [];
+  }
+  return out;
+}
+
 // ---------- CPM mensual agrupado por Sarta ----------
 // Una sarta agrupa varias referencias (bundle.sartas); el CPM de cada referencia
 // usa su propio promedio mensual de metros sin importar que la referencia se
@@ -624,7 +658,7 @@ if (typeof module !== 'undefined') {
     cpmPorHerramienta, cpmGlobal, causaBreakdown, fallaBreakdown,
     vidaUtilGlobal, vidaUtilPorHerramienta, cumplimientoPorMes,
     cpmTrend, rendimientoPorPieza,
-    avgMetrosPorReferenciaPorMes, cpmPorSarta, cpmPorSartaTotal, metrosPorCodigoPorReferencia,
+    avgMetrosPorReferenciaPorMes, cpmPorSarta, cpmPorSartaTotal, sartaMinasPorHerramienta, metrosPorCodigoPorReferencia,
     gananciaPerdidaPorHerramienta,
     dayToYM, dayToYear, dayToDateStr, MONTH_NAMES,
   };

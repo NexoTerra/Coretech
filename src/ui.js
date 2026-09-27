@@ -381,8 +381,18 @@ function renderCpmPorSarta(bundle, life) {
     return;
   }
   if (filters.sarta.length) sartaTotals = sartaTotals.filter(s => filters.sarta.includes(s.sarta));
+  // Dos sartas hermanas (ej. "Escareado" y "Escareado T1D") comparten 3 de
+  // sus 4 herramientas y difieren solo en una (el shank) — esa herramienta
+  // compartida sí tiene actividad amplia en otras minas, pero eso no
+  // significa que ESTA sarta se use ahí. Si hay un filtro de Mina activo,
+  // ocultar sartas que en realidad no operan en ninguna de las minas
+  // filtradas (ver sartaMinasPorHerramienta).
+  if (filters.mina.length) {
+    const sartaMinas = sartaMinasPorHerramienta(bundle);
+    sartaTotals = sartaTotals.filter(s => (sartaMinas[s.sarta] || []).some(m => filters.mina.includes(m)));
+  }
   if (!sartaTotals.length) {
-    chartEl.innerHTML = '<div class="empty-note">Sin datos para la sarta seleccionada.</div>';
+    chartEl.innerHTML = '<div class="empty-note">Sin datos para la sarta y/o mina seleccionadas.</div>';
     conclusionEl.textContent = '';
     return;
   }
@@ -550,10 +560,17 @@ function renderCPMTrend(bundle, life) {
   // esas — el resto queda oculto en vez de saturar la sección con todas.
   if (filters.sarta.length) {
     sartaRows = sartaRows.filter(s => filters.sarta.includes(s.sarta));
-    if (!sartaRows.length) {
-      section.innerHTML = '<div class="empty-note">Sin datos para la sarta seleccionada.</div>';
-      return;
-    }
+  }
+  // Mismo criterio que en "CPM por sarta": una sarta hermana que comparte
+  // herramientas con otra no debe aparecer bajo un filtro de Mina donde en
+  // realidad no opera (ver sartaMinasPorHerramienta).
+  if (filters.mina.length) {
+    const sartaMinas = sartaMinasPorHerramienta(bundle);
+    sartaRows = sartaRows.filter(s => (sartaMinas[s.sarta] || []).some(m => filters.mina.includes(m)));
+  }
+  if (!sartaRows.length) {
+    section.innerHTML = '<div class="empty-note">Sin datos para la sarta y/o mina seleccionadas.</div>';
+    return;
   }
   const monthSet = new Set();
   sartaRows.forEach(s => s.referencias.forEach(r => r.months.forEach(m => monthSet.add(m.ym))));
