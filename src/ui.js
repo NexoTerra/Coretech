@@ -39,6 +39,16 @@ function canSeeMine(slug) {
   if (currentUser.role === 'admin' || currentUser.role === 'supervisor' || currentUser.role === 'digitalizador') return true;
   return (currentUser.allowed_mines || []).includes(slug);
 }
+// El Administrador ve todo lo que ve el Supervisor (las 3 minas juntas, sin
+// acotarse a allowed_mines) — "los administradores deben tener permiso a
+// todo", incluidos los módulos de campo que antes eran solo del Supervisor.
+function perfSeesAllMines() {
+  return currentUser.role === 'supervisor' || currentUser.role === 'admin';
+}
+function goToHub() {
+  renderHub();
+  showScreen('hub');
+}
 
 function containerWidth(id, fallback) {
   const elx = document.getElementById(id);
@@ -1153,6 +1163,25 @@ function renderHub() {
     </button>`);
     card.addEventListener('click', enterUsersScreen);
     grid.appendChild(card);
+
+    // El Administrador tiene acceso a todo lo que antes era exclusivo de
+    // Supervisor/Técnico/Digitalizador — estas 4 tarjetas son la puerta de
+    // entrada a esos módulos de campo (cada pantalla ya sabe volver aquí
+    // con su botón "Inicio").
+    [
+      ['📈', 'Panel de rendimiento', 'Metraje y % de cumplimiento — las 3 minas, sin costos', enterPerfScreen],
+      ['📝', 'Reporte diario', 'Cargar metraje diario y dar de baja herramientas', enterDigitalizadorScreen],
+      ['🔧', 'Códigos y despachos', 'Registrar herramientas nuevas y despacharlas', enterToolsScreen],
+      ['📄', 'Informes de falla', 'Generar el informe de análisis de falla prematura', enterReportsScreen],
+    ].forEach(([icon, title, sub, handler]) => {
+      const c = el(`<button type="button" class="hub-card">
+        <span class="hub-card-icon">${icon}</span>
+        <span class="hub-card-title">${esc(title)}</span>
+        <span class="hub-card-sub">${esc(sub)}</span>
+      </button>`);
+      c.addEventListener('click', handler);
+      grid.appendChild(c);
+    });
   }
   if (!grid.children.length) {
     grid.innerHTML = '<div class="hub-empty">No tienes acceso a ningún módulo todavía. Pide a un administrador que te asigne acceso.</div>';
@@ -1201,7 +1230,7 @@ async function enterPerfScreen() {
   document.getElementById('perfSearchFilterGroup').hidden = false;
   document.getElementById('perfLegend').hidden = false;
   document.getElementById('perfSelectionBar').hidden = false;
-  const isSupervisor = currentUser.role === 'supervisor';
+  const isSupervisor = perfSeesAllMines();
   const minesToLoad = isSupervisor ? MINES : MINES.filter(m => (currentUser.allowed_mines || []).includes(m.slug));
   document.getElementById('perfSubtitle').textContent = isSupervisor
     ? 'Metraje y rendimiento por pieza — las 3 minas, sin costos'
@@ -1209,6 +1238,7 @@ async function enterPerfScreen() {
   document.getElementById('perfMinaFilterGroup').hidden = !isSupervisor;
   document.getElementById('perfGoToolsBtn').hidden = !isSupervisor;
   document.getElementById('perfGoReportsBtn').hidden = !isSupervisor;
+  document.getElementById('perfHomeBtn').hidden = currentUser.role !== 'admin';
 
   const allRows = [];
   for (const m of minesToLoad) {
@@ -1245,6 +1275,8 @@ function wirePerfEvents() {
     goReportsBtn.dataset.wired = '1';
     goReportsBtn.addEventListener('click', enterReportsScreen);
   }
+  const homeBtn = document.getElementById('perfHomeBtn');
+  if (!homeBtn.dataset.wired) { homeBtn.dataset.wired = '1'; homeBtn.addEventListener('click', goToHub); }
   const search = document.getElementById('perfSearch');
   if (!search.dataset.wired) {
     search.dataset.wired = '1';
@@ -1365,7 +1397,7 @@ function renderPerfCharts() {
 function exportPerfPdf() {
   const rows = getSelectedPerfRows();
   if (!rows.length) return;
-  const showMina = currentUser.role === 'supervisor';
+  const showMina = perfSeesAllMines();
   const logoImg = document.getElementById('logoImgLight');
   const logoSrc = logoImg ? logoImg.src : '';
   const fecha = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -1458,7 +1490,7 @@ function renderPerfTable() {
   let rows = getFilteredPerfRows();
   rows = rows.slice().sort((a, b) => (a.pctRendimiento ?? 999) - (b.pctRendimiento ?? 999));
 
-  const showMina = currentUser.role === 'supervisor';
+  const showMina = perfSeesAllMines();
   const total = rows.length;
   const totalPages = Math.max(1, Math.ceil(total / PERF_PAGE_SIZE));
   perfState.page = Math.min(perfState.page, totalPages);
@@ -1519,6 +1551,7 @@ function fmtFechaLarga(fechaStr) {
 async function enterDigitalizadorScreen() {
   showScreen('daily-report');
   document.getElementById('dailyReportUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
+  document.getElementById('dailyReportHomeBtn').hidden = currentUser.role !== 'admin';
   const today = new Date().toISOString().slice(0, 10);
   dailyReportState = { fecha: today, mina: '', equipo: '', tipo: '', operador: '', search: '', activeTools: [], bajaTools: [], bajaSelected: null };
 
@@ -1549,6 +1582,8 @@ async function enterDigitalizadorScreen() {
 }
 
 function wireDailyReportEvents() {
+  const homeBtn = document.getElementById('dailyReportHomeBtn');
+  if (!homeBtn.dataset.wired) { homeBtn.dataset.wired = '1'; homeBtn.addEventListener('click', goToHub); }
   const logoutBtn = document.getElementById('dailyReportLogoutBtn');
   if (!logoutBtn.dataset.wired) { logoutBtn.dataset.wired = '1'; logoutBtn.addEventListener('click', handleLogout); }
 
@@ -1871,6 +1906,7 @@ let toolsState = { catalog: [], reserva: [], despachoCodigo: null };
 async function enterToolsScreen() {
   showScreen('tools');
   document.getElementById('toolsUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
+  document.getElementById('toolsHomeBtn').hidden = currentUser.role !== 'admin';
   const today = new Date().toISOString().slice(0, 10);
   document.getElementById('altaFecha').value = today;
   document.getElementById('altaFecha').max = today;
@@ -1899,6 +1935,8 @@ function wireToolsEvents() {
   if (!backBtn.dataset.wired) { backBtn.dataset.wired = '1'; backBtn.addEventListener('click', enterPerfScreen); }
   const goReportsBtn = document.getElementById('toolsGoReportsBtn');
   if (!goReportsBtn.dataset.wired) { goReportsBtn.dataset.wired = '1'; goReportsBtn.addEventListener('click', enterReportsScreen); }
+  const homeBtn = document.getElementById('toolsHomeBtn');
+  if (!homeBtn.dataset.wired) { homeBtn.dataset.wired = '1'; homeBtn.addEventListener('click', goToHub); }
   const logoutBtn = document.getElementById('toolsLogoutBtn');
   if (!logoutBtn.dataset.wired) { logoutBtn.dataset.wired = '1'; logoutBtn.addEventListener('click', handleLogout); }
 
@@ -2045,6 +2083,7 @@ function saveReportDefaults(defaults) {
 async function enterReportsScreen() {
   showScreen('reports');
   document.getElementById('reportsUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
+  document.getElementById('reportsHomeBtn').hidden = currentUser.role !== 'admin';
   showReportsList();
   document.getElementById('reportsSearch').value = '';
   reportsState.search = '';
@@ -2058,6 +2097,8 @@ function wireReportsEvents() {
   if (!backBtn.dataset.wired) { backBtn.dataset.wired = '1'; backBtn.addEventListener('click', enterPerfScreen); }
   const goToolsBtn = document.getElementById('reportsGoToolsBtn');
   if (!goToolsBtn.dataset.wired) { goToolsBtn.dataset.wired = '1'; goToolsBtn.addEventListener('click', enterToolsScreen); }
+  const homeBtn = document.getElementById('reportsHomeBtn');
+  if (!homeBtn.dataset.wired) { homeBtn.dataset.wired = '1'; homeBtn.addEventListener('click', goToHub); }
   const logoutBtn = document.getElementById('reportsLogoutBtn');
   if (!logoutBtn.dataset.wired) { logoutBtn.dataset.wired = '1'; logoutBtn.addEventListener('click', handleLogout); }
   const search = document.getElementById('reportsSearch');
