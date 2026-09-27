@@ -43,13 +43,17 @@ body{
 
 /* ---- login gate ---- */
 body.authed #loginScreen{display:none;}
-#app, #hubScreen, #usersScreen, #perfScreen{display:none;}
+#app, #hubScreen, #usersScreen, #perfScreen, #dailyReportScreen{display:none;}
 body.screen-hub #hubScreen{display:flex;}
 body.screen-app #app{display:block;}
 body.screen-users #usersScreen{display:block;}
 body.screen-perf #perfScreen{display:block;}
+body.screen-daily-report #dailyReportScreen{display:block;}
 #perfScreen{max-width:1400px; margin:0 auto; padding:20px 24px 60px;}
 #perfScreen .screen-header{max-width:none; margin:0 0 18px; padding:0;}
+#dailyReportScreen{max-width:1200px; margin:0 auto; padding:20px 24px 60px; flex-direction:column; gap:20px;}
+body.screen-daily-report #dailyReportScreen{display:flex;}
+#dailyReportScreen .screen-header{max-width:none; margin:0; padding:0;}
 #loginScreen{
   min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
 }
@@ -223,6 +227,19 @@ button:disabled:hover{border-color:var(--border); color:var(--text);}
   padding:6.5px 8px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2);
   color:var(--text); font-size:12.5px; font-family:var(--font-body);
 }
+.filter-group input[type="date"], .filter-group input[type="text"],
+.filter-group input[type="number"], .filter-group input[type="search"]{
+  padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text); font-size:13px; font-family:var(--font-body); width:100%;
+}
+.metros-input{
+  width:100px; padding:5px 8px; border-radius:7px; border:1px solid var(--border);
+  background:var(--surface); color:var(--text); font-size:13px; font-family:var(--font-body);
+  text-align:right; font-variant-numeric:tabular-nums;
+}
+.metros-input:focus{border-color:var(--cyan); outline:none;}
+button.danger{color:var(--red);}
+button.danger:hover{border-color:var(--red); background:rgba(214,69,69,.08); color:var(--red);}
 .filter-actions{margin-left:auto; align-self:flex-end;}
 
 /* ---- KPI row ---- */

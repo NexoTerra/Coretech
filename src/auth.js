@@ -136,6 +136,46 @@ async function replaceTable(name, pkColumn, rows) {
   }
 }
 
+// Trae filas que coincidan exactamente con un conjunto de columnas (AND entre
+// ellas). Pensado para lecturas acotadas (p.ej. "piezas activas de una mina",
+// "producción de un código") donde traer la tabla completa con fetchTable
+// sería desperdiciar ancho de banda.
+async function fetchMatch(name, match) {
+  let q = client.from(name).select('*');
+  Object.entries(match).forEach(([col, val]) => { q = q.eq(col, val); });
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+// Inserta filas nuevas sin tocar lo que ya existe (a diferencia de
+// replaceTable, que borra la tabla completa primero) — para cargas
+// incrementales como el reporte diario del Digitalizador.
+async function insertRows(name, rows) {
+  const CHUNK = 500;
+  let inserted = [];
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const { data, error } = await client.from(name).insert(rows.slice(i, i + CHUNK)).select();
+    if (error) throw error;
+    inserted = inserted.concat(data || []);
+  }
+  return inserted;
+}
+
+async function updateMatch(name, match, patch) {
+  let q = client.from(name).update(patch);
+  Object.entries(match).forEach(([col, val]) => { q = q.eq(col, val); });
+  const { error } = await q;
+  if (error) throw error;
+}
+
+async function deleteMatch(name, match) {
+  let q = client.from(name).delete();
+  Object.entries(match).forEach(([col, val]) => { q = q.eq(col, val); });
+  const { error } = await q;
+  if (error) throw error;
+}
+
 async function getDatasetMeta() {
   const { data, error } = await client.from('dataset_meta').select('*').eq('id', 'current').maybeSingle();
   if (error) throw error;
@@ -157,6 +197,7 @@ window.CTAuth = {
   listProfiles, updateProfileRole, updateProfileMines, removeProfile,
   loadConciliacionRemote, setConciliacion,
   fetchTable, replaceTable, getDatasetMeta, setDatasetMeta,
+  fetchMatch, insertRows, updateMatch, deleteMatch,
   pendingAuthType: PENDING_AUTH_TYPE,
   cameFromAuthLink: CAME_FROM_AUTH_LINK,
   onAuthStateChange: (cb) => client.auth.onAuthStateChange(cb),

@@ -50,13 +50,17 @@ body{
 
 /* ---- login gate ---- */
 body.authed #loginScreen{display:none;}
-#app, #hubScreen, #usersScreen, #perfScreen{display:none;}
+#app, #hubScreen, #usersScreen, #perfScreen, #dailyReportScreen{display:none;}
 body.screen-hub #hubScreen{display:flex;}
 body.screen-app #app{display:block;}
 body.screen-users #usersScreen{display:block;}
 body.screen-perf #perfScreen{display:block;}
+body.screen-daily-report #dailyReportScreen{display:block;}
 #perfScreen{max-width:1400px; margin:0 auto; padding:20px 24px 60px;}
 #perfScreen .screen-header{max-width:none; margin:0 0 18px; padding:0;}
+#dailyReportScreen{max-width:1200px; margin:0 auto; padding:20px 24px 60px; flex-direction:column; gap:20px;}
+body.screen-daily-report #dailyReportScreen{display:flex;}
+#dailyReportScreen .screen-header{max-width:none; margin:0; padding:0;}
 #loginScreen{
   min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
 }
@@ -230,6 +234,19 @@ button:disabled:hover{border-color:var(--border); color:var(--text);}
   padding:6.5px 8px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2);
   color:var(--text); font-size:12.5px; font-family:var(--font-body);
 }
+.filter-group input[type="date"], .filter-group input[type="text"],
+.filter-group input[type="number"], .filter-group input[type="search"]{
+  padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:var(--surface-2);
+  color:var(--text); font-size:13px; font-family:var(--font-body); width:100%;
+}
+.metros-input{
+  width:100px; padding:5px 8px; border-radius:7px; border:1px solid var(--border);
+  background:var(--surface); color:var(--text); font-size:13px; font-family:var(--font-body);
+  text-align:right; font-variant-numeric:tabular-nums;
+}
+.metros-input:focus{border-color:var(--cyan); outline:none;}
+button.danger{color:var(--red);}
+button.danger:hover{border-color:var(--red); background:rgba(214,69,69,.08); color:var(--red);}
 .filter-actions{margin-left:auto; align-self:flex-end;}
 
 /* ---- KPI row ---- */
@@ -463,6 +480,77 @@ footer b{color:var(--text-dim);}
       </table>
     </div>
     <div class="pagination" id="perfPagination"></div>
+  </section>
+</div>
+
+<!-- Pantalla del Digitalizador: carga el reporte diario de producción y
+     corrige (borra) reportes con error, directo contra Supabase — la app ya
+     es la fuente de datos, no una recarga de Excel. -->
+<div id="dailyReportScreen">
+  <div class="screen-header">
+    <div>
+      <h1>Reporte diario de producción</h1>
+      <p class="subtitle">Aris Mining Segovia — Sandra K, El Silencio, Providencia</p>
+    </div>
+    <div class="topbar-actions">
+      <span class="user-badge" id="dailyReportUserBadge"></span>
+      <button id="dailyReportLogoutBtn" class="ghost">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <section class="card">
+    <h3>Nuevo reporte</h3>
+    <p class="chart-sub">Elige la fecha, la mina y el equipo, escribe los metros solo en las herramientas que trabajaron ese turno y guarda.</p>
+    <div class="filterbar">
+      <div class="filter-group">
+        <label>Fecha</label>
+        <input type="date" id="drFecha">
+      </div>
+      <div class="filter-group">
+        <label>Mina</label>
+        <select id="drMina"><option value="">Selecciona…</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Equipo</label>
+        <select id="drEquipo" disabled><option value="">Selecciona una mina primero</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Tipo de perforación</label>
+        <select id="drTipo"><option value="">Selecciona…</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Operador</label>
+        <input type="text" id="drOperador" placeholder="Nombre del operador">
+      </div>
+      <div class="filter-group">
+        <label>Buscar herramienta</label>
+        <input type="search" id="drSearch" placeholder="Código, referencia, herramienta…">
+      </div>
+    </div>
+    <p class="empty-note" id="drEmptyNote">Selecciona una mina para ver sus herramientas activas.</p>
+    <div class="table-wrap" id="drTableWrap" hidden>
+      <table>
+        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th class="num">Metros Acumulados</th><th class="num">Metro Ideal</th><th class="num">Metros Hoy</th></tr></thead>
+        <tbody id="drTableBody"></tbody>
+      </table>
+    </div>
+    <div class="perf-selection-bar" id="drActionsBar" hidden>
+      <span class="perf-selection-count" id="drFillCount">0 herramientas con metros cargados</span>
+      <button class="small primary" id="drSaveBtn" type="button" disabled>Guardar reporte</button>
+    </div>
+    <p class="login-error" id="drError" hidden></p>
+    <p class="chart-sub" id="drSuccess" hidden></p>
+  </section>
+
+  <section class="card">
+    <h3>Reportes de <span id="drTodayLabel">la fecha seleccionada</span></h3>
+    <p class="chart-sub">Reportes ya guardados para la fecha y mina de arriba — bórralos aquí si hubo un error de carga.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Herramienta</th><th>Código Interno</th><th>Equipo</th><th>Tipo</th><th>Operador</th><th class="num">Metros</th><th></th></tr></thead>
+        <tbody id="drTodayBody"></tbody>
+      </table>
+    </div>
   </section>
 </div>
 
@@ -2365,8 +2453,38 @@ async function publishSharedBundle(bundle, sourceFilename) {
   await CTAuth.setDatasetMeta(sourceFilename, bundle.cpmIdealPorSarta || {});
 }
 
+// ---------- Reporte diario (Digitalizador) ----------
+// "piezas.metros_perforados" es un acumulado cacheado, no la fuente de
+// verdad — se recalcula siempre como la suma real de "producción" para ese
+// código, así que un reporte editado o borrado nunca deja el acumulado
+// desincronizado ("drift").
+async function refreshPiezaMetros(codigo_marcado) {
+  const rows = await CTAuth.fetchMatch('produccion', { codigo_marcado });
+  const total = rows.reduce((sum, r) => sum + (Number(r.metros) || 0), 0);
+  await CTAuth.updateMatch('piezas', { codigo_marcado }, { metros_perforados: total });
+  return total;
+}
+
+// Un reporte de un formato "wide" (varias herramientas de una misma sarta
+// reportando el mismo metraje simultáneamente) debe contar ese metraje una
+// sola vez en los totales — ver el comentario sobre "primary" en agg.js. Tras
+// cualquier inserción o borrado en un mismo (fecha, mina, equipo), esto deja
+// exactamente una fila marcada como la principal.
+async function reconcilePrimary(fecha, mina, equipo) {
+  const rows = await CTAuth.fetchMatch('produccion', { fecha, mina, equipo });
+  if (!rows.length) return;
+  const primarias = rows.filter(r => r.es_primario);
+  if (primarias.length === 0) {
+    await CTAuth.updateMatch('produccion', { id: rows[0].id }, { es_primario: true });
+  } else if (primarias.length > 1) {
+    for (let i = 1; i < primarias.length; i++) {
+      await CTAuth.updateMatch('produccion', { id: primarias[i].id }, { es_primario: false });
+    }
+  }
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { bundleToRows, rowsToBundle, dateStrToDay };
+  module.exports = { bundleToRows, rowsToBundle, dateStrToDay, refreshPiezaMetros, reconcilePrimary };
 }
 </script>
 <script>// ---------- Lightweight inline-SVG chart builders (no external deps) ----------
@@ -2807,6 +2925,46 @@ async function replaceTable(name, pkColumn, rows) {
   }
 }
 
+// Trae filas que coincidan exactamente con un conjunto de columnas (AND entre
+// ellas). Pensado para lecturas acotadas (p.ej. "piezas activas de una mina",
+// "producción de un código") donde traer la tabla completa con fetchTable
+// sería desperdiciar ancho de banda.
+async function fetchMatch(name, match) {
+  let q = client.from(name).select('*');
+  Object.entries(match).forEach(([col, val]) => { q = q.eq(col, val); });
+  const { data, error } = await q;
+  if (error) throw error;
+  return data || [];
+}
+
+// Inserta filas nuevas sin tocar lo que ya existe (a diferencia de
+// replaceTable, que borra la tabla completa primero) — para cargas
+// incrementales como el reporte diario del Digitalizador.
+async function insertRows(name, rows) {
+  const CHUNK = 500;
+  let inserted = [];
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const { data, error } = await client.from(name).insert(rows.slice(i, i + CHUNK)).select();
+    if (error) throw error;
+    inserted = inserted.concat(data || []);
+  }
+  return inserted;
+}
+
+async function updateMatch(name, match, patch) {
+  let q = client.from(name).update(patch);
+  Object.entries(match).forEach(([col, val]) => { q = q.eq(col, val); });
+  const { error } = await q;
+  if (error) throw error;
+}
+
+async function deleteMatch(name, match) {
+  let q = client.from(name).delete();
+  Object.entries(match).forEach(([col, val]) => { q = q.eq(col, val); });
+  const { error } = await q;
+  if (error) throw error;
+}
+
 async function getDatasetMeta() {
   const { data, error } = await client.from('dataset_meta').select('*').eq('id', 'current').maybeSingle();
   if (error) throw error;
@@ -2828,6 +2986,7 @@ window.CTAuth = {
   listProfiles, updateProfileRole, updateProfileMines, removeProfile,
   loadConciliacionRemote, setConciliacion,
   fetchTable, replaceTable, getDatasetMeta, setDatasetMeta,
+  fetchMatch, insertRows, updateMatch, deleteMatch,
   pendingAuthType: PENDING_AUTH_TYPE,
   cameFromAuthLink: CAME_FROM_AUTH_LINK,
   onAuthStateChange: (cb) => client.auth.onAuthStateChange(cb),
@@ -3953,7 +4112,7 @@ async function loadSharedBundleIntoApp() {
   } catch (e) { /* se queda con el bundle base embebido */ }
 }
 function showScreen(name) {
-  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users', 'screen-perf');
+  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users', 'screen-perf', 'screen-daily-report');
   document.body.classList.add('screen-' + name);
 }
 function mineInfo(slug) {
@@ -4007,17 +4166,7 @@ async function enterHub(user) {
     return;
   }
   if (user.role === 'digitalizador') {
-    showScreen('perf');
-    document.getElementById('perfSubtitle').textContent = 'Esta función estará disponible pronto.';
-    document.getElementById('perfMinaFilterGroup').hidden = true;
-    document.getElementById('perfSearchFilterGroup').hidden = true;
-    document.getElementById('perfLegend').hidden = true;
-    document.getElementById('perfSelectionBar').hidden = true;
-    document.getElementById('perfChartPanel').hidden = true;
-    document.getElementById('perfTableHead').innerHTML = '';
-    document.getElementById('perfTableBody').innerHTML = '';
-    document.getElementById('perfPagination').innerHTML = '';
-    wirePerfEvents();
+    await enterDigitalizadorScreen();
     return;
   }
   renderHub();
@@ -4333,6 +4482,252 @@ function renderPerfTable() {
   const chartPanel = document.getElementById('perfChartPanel');
   if (chartPanel && !chartPanel.hidden) renderPerfCharts();
 }
+
+// ============ reporte diario (Digitalizador) ============
+// Las 3 minas son sub-sitios de la operación de Segovia (ver MINES) — igual
+// que en el panel de rendimiento, no "Segovia vs. Marmato". Marmato no tiene
+// datos publicados en Supabase todavía, así que este formulario solo aplica
+// a Segovia por ahora.
+const MINAS_SEGOVIA = ['SANDRA K', 'EL SILENCIO', 'PROVIDENCIA'];
+const TIPOS_PERFORACION = ['AVANCE', 'ESCARIADO', 'SOSTENIMIENTO', 'ESCAREADORA'];
+let dailyReportState = { fecha: '', mina: '', equipo: '', tipo: '', operador: '', search: '', activeTools: [] };
+
+function fmtFechaLarga(fechaStr) {
+  if (!fechaStr) return '';
+  return new Date(fechaStr + 'T00:00:00').toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+async function enterDigitalizadorScreen() {
+  showScreen('daily-report');
+  document.getElementById('dailyReportUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
+  const today = new Date().toISOString().slice(0, 10);
+  dailyReportState = { fecha: today, mina: '', equipo: '', tipo: '', operador: '', search: '', activeTools: [] };
+
+  const fechaInput = document.getElementById('drFecha');
+  fechaInput.value = today;
+  fechaInput.max = today;
+  document.getElementById('drMina').innerHTML = '<option value="">Selecciona…</option>' + MINAS_SEGOVIA.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  document.getElementById('drTipo').innerHTML = '<option value="">Selecciona…</option>' + TIPOS_PERFORACION.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  document.getElementById('drEquipo').innerHTML = '<option value="">Selecciona una mina primero</option>';
+  document.getElementById('drOperador').value = '';
+  document.getElementById('drSearch').value = '';
+  document.getElementById('drError').hidden = true;
+  document.getElementById('drSuccess').hidden = true;
+
+  wireDailyReportEvents();
+  renderDailyReportTable();
+  await renderTodayReports();
+}
+
+function wireDailyReportEvents() {
+  const logoutBtn = document.getElementById('dailyReportLogoutBtn');
+  if (!logoutBtn.dataset.wired) { logoutBtn.dataset.wired = '1'; logoutBtn.addEventListener('click', handleLogout); }
+
+  const fechaInput = document.getElementById('drFecha');
+  if (!fechaInput.dataset.wired) {
+    fechaInput.dataset.wired = '1';
+    fechaInput.addEventListener('change', (e) => { dailyReportState.fecha = e.target.value; renderTodayReports(); });
+  }
+  const minaSel = document.getElementById('drMina');
+  if (!minaSel.dataset.wired) {
+    minaSel.dataset.wired = '1';
+    minaSel.addEventListener('change', (e) => { onDailyMinaChange(e.target.value); });
+  }
+  const equipoSel = document.getElementById('drEquipo');
+  if (!equipoSel.dataset.wired) {
+    equipoSel.dataset.wired = '1';
+    equipoSel.addEventListener('change', (e) => { dailyReportState.equipo = e.target.value; renderDailyReportTable(); });
+  }
+  const tipoSel = document.getElementById('drTipo');
+  if (!tipoSel.dataset.wired) {
+    tipoSel.dataset.wired = '1';
+    tipoSel.addEventListener('change', (e) => { dailyReportState.tipo = e.target.value; });
+  }
+  const operadorInput = document.getElementById('drOperador');
+  if (!operadorInput.dataset.wired) {
+    operadorInput.dataset.wired = '1';
+    operadorInput.addEventListener('input', (e) => { dailyReportState.operador = e.target.value; });
+  }
+  const searchInput = document.getElementById('drSearch');
+  if (!searchInput.dataset.wired) {
+    searchInput.dataset.wired = '1';
+    searchInput.addEventListener('input', (e) => { dailyReportState.search = e.target.value; renderDailyReportTable(); });
+  }
+  const tbody = document.getElementById('drTableBody');
+  if (!tbody.dataset.wired) {
+    tbody.dataset.wired = '1';
+    tbody.addEventListener('input', (e) => { if (e.target.classList.contains('dr-metros-input')) updateDrFillCount(); });
+  }
+  const saveBtn = document.getElementById('drSaveBtn');
+  if (!saveBtn.dataset.wired) { saveBtn.dataset.wired = '1'; saveBtn.addEventListener('click', saveDailyReport); }
+
+  const todayBody = document.getElementById('drTodayBody');
+  if (!todayBody.dataset.wired) { todayBody.dataset.wired = '1'; todayBody.addEventListener('click', handleDeleteDailyReport); }
+}
+
+async function onDailyMinaChange(mina) {
+  dailyReportState.mina = mina;
+  dailyReportState.equipo = '';
+  dailyReportState.activeTools = [];
+  const equipoSel = document.getElementById('drEquipo');
+  if (!mina) {
+    equipoSel.innerHTML = '<option value="">Selecciona una mina primero</option>';
+    equipoSel.disabled = true;
+    renderDailyReportTable();
+    await renderTodayReports();
+    return;
+  }
+  equipoSel.innerHTML = '<option value="">Cargando…</option>';
+  equipoSel.disabled = true;
+  renderDailyReportTable();
+  const rows = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
+  dailyReportState.activeTools = rows;
+  const equipos = Array.from(new Set(rows.map(r => r.equipo).filter(Boolean))).sort();
+  equipoSel.innerHTML = equipos.length
+    ? '<option value="">Selecciona…</option>' + equipos.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('')
+    : '<option value="">Sin herramientas activas en esta mina</option>';
+  equipoSel.disabled = equipos.length === 0;
+  renderDailyReportTable();
+  await renderTodayReports();
+}
+
+function renderDailyReportTable() {
+  const wrap = document.getElementById('drTableWrap');
+  const emptyNote = document.getElementById('drEmptyNote');
+  const actionsBar = document.getElementById('drActionsBar');
+  const { mina, equipo, search } = dailyReportState;
+
+  if (!mina || !equipo) {
+    wrap.hidden = true; actionsBar.hidden = true; emptyNote.hidden = false;
+    if (!mina) {
+      emptyNote.textContent = 'Selecciona una mina para ver sus herramientas activas.';
+    } else if (mina && dailyReportState.activeTools.length === 0) {
+      emptyNote.textContent = `${mina} no tiene herramientas activas registradas — pide al supervisor que registre los códigos antes de reportar.`;
+    } else {
+      emptyNote.textContent = 'Selecciona un equipo para ver sus herramientas activas.';
+    }
+    return;
+  }
+  let rows = dailyReportState.activeTools.filter(r => r.equipo === equipo);
+  if (search) {
+    const q = search.toLowerCase();
+    rows = rows.filter(r => [r.codigo_marcado, r.ref_code, r.herramienta].some(v => String(v || '').toLowerCase().includes(q)));
+  }
+  rows = rows.slice().sort((a, b) => (a.herramienta || '').localeCompare(b.herramienta || ''));
+
+  if (!rows.length) {
+    wrap.hidden = true; actionsBar.hidden = true; emptyNote.hidden = false;
+    emptyNote.textContent = 'Ninguna herramienta activa de este equipo coincide con la búsqueda.';
+    return;
+  }
+  emptyNote.hidden = true; wrap.hidden = false; actionsBar.hidden = false;
+
+  document.getElementById('drTableBody').innerHTML = rows.map(r => `<tr>
+    <td>${esc(r.ref_code || '—')}</td><td>${esc(r.herramienta || '—')}</td><td>${esc(r.codigo_marcado)}</td>
+    <td class="num">${fmtNum(r.metros_perforados || 0)}</td>
+    <td class="num">${r.metro_garantizado != null ? fmtNum(r.metro_garantizado) : '—'}</td>
+    <td class="num"><input type="number" class="metros-input dr-metros-input" min="0" step="0.01" data-codigo="${esc(r.codigo_marcado)}" placeholder="—"></td>
+  </tr>`).join('');
+  updateDrFillCount();
+}
+
+function updateDrFillCount() {
+  const inputs = Array.from(document.querySelectorAll('.dr-metros-input'));
+  const filled = inputs.filter(i => i.value !== '' && Number(i.value) > 0);
+  document.getElementById('drFillCount').textContent = filled.length === 1 ? '1 herramienta con metros cargados' : `${filled.length} herramientas con metros cargados`;
+  document.getElementById('drSaveBtn').disabled = filled.length === 0;
+}
+
+function showDrError(msg) {
+  document.getElementById('drSuccess').hidden = true;
+  const el = document.getElementById('drError');
+  el.hidden = false; el.textContent = msg;
+}
+
+async function saveDailyReport() {
+  const { fecha, mina, equipo, tipo, operador } = dailyReportState;
+  document.getElementById('drError').hidden = true;
+  document.getElementById('drSuccess').hidden = true;
+
+  if (!fecha || !mina || !equipo || !tipo) { showDrError('Completa la fecha, la mina, el equipo y el tipo de perforación.'); return; }
+  if (!operador || !operador.trim()) { showDrError('Escribe el nombre del operador.'); return; }
+  const inputs = Array.from(document.querySelectorAll('.dr-metros-input')).filter(i => i.value !== '' && Number(i.value) > 0);
+  if (!inputs.length) { showDrError('Ingresa los metros de al menos una herramienta.'); return; }
+
+  const saveBtn = document.getElementById('drSaveBtn');
+  saveBtn.disabled = true; saveBtn.textContent = 'Guardando…';
+  try {
+    const byCodigo = new Map(dailyReportState.activeTools.map(r => [r.codigo_marcado, r]));
+    const entries = inputs.map(inp => {
+      const tool = byCodigo.get(inp.dataset.codigo);
+      return {
+        fecha, mina, tipo, equipo, ref_code: tool.ref_code, herramienta: tool.herramienta,
+        codigo_marcado: tool.codigo_marcado, metros: Number(inp.value), es_primario: false,
+        operador: operador.trim(),
+      };
+    });
+    await CTAuth.insertRows('produccion', entries);
+    await reconcilePrimary(fecha, mina, equipo);
+    for (const codigo of new Set(entries.map(e => e.codigo_marcado))) {
+      await refreshPiezaMetros(codigo);
+    }
+    const rows = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
+    dailyReportState.activeTools = rows;
+    renderDailyReportTable();
+    await renderTodayReports();
+    const okEl = document.getElementById('drSuccess');
+    okEl.hidden = false;
+    okEl.textContent = `Reporte guardado: ${entries.length} herramienta${entries.length === 1 ? '' : 's'} el ${fmtFechaLarga(fecha)}.`;
+  } catch (e) {
+    showDrError('No se pudo guardar el reporte (' + e.message + ').');
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = 'Guardar reporte';
+  }
+}
+
+async function renderTodayReports() {
+  const { fecha, mina } = dailyReportState;
+  const label = document.getElementById('drTodayLabel');
+  const tbody = document.getElementById('drTodayBody');
+  if (!fecha || !mina) {
+    label.textContent = 'la fecha y mina seleccionadas';
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-note">Selecciona una fecha y una mina.</td></tr>`;
+    return;
+  }
+  label.textContent = `${fmtFechaLarga(fecha)} — ${mina}`;
+  const rows = await CTAuth.fetchMatch('produccion', { fecha, mina });
+  rows.sort((a, b) => (a.equipo || '').localeCompare(b.equipo || '') || (a.herramienta || '').localeCompare(b.herramienta || ''));
+  tbody.innerHTML = rows.length ? rows.map(r => `<tr>
+    <td>${esc(r.herramienta || '—')}</td><td>${esc(r.codigo_marcado)}</td><td>${esc(r.equipo || '—')}</td>
+    <td>${esc(r.tipo || '—')}</td><td>${esc(r.operador || '—')}</td>
+    <td class="num">${fmtNum(r.metros)}</td>
+    <td><button type="button" class="small ghost danger dr-delete-btn" data-id="${r.id}" data-codigo="${esc(r.codigo_marcado)}" data-mina="${esc(mina)}" data-equipo="${esc(r.equipo || '')}" data-fecha="${esc(fecha)}">Eliminar</button></td>
+  </tr>`).join('') : `<tr><td colspan="7" class="empty-note">Sin reportes para esta fecha y mina todavía.</td></tr>`;
+}
+
+async function handleDeleteDailyReport(e) {
+  const btn = e.target.closest('.dr-delete-btn');
+  if (!btn) return;
+  if (!confirm('¿Eliminar este reporte? El acumulado de metros de la herramienta se recalculará.')) return;
+  btn.disabled = true;
+  try {
+    const id = Number(btn.dataset.id);
+    await CTAuth.deleteMatch('produccion', { id });
+    await refreshPiezaMetros(btn.dataset.codigo);
+    await reconcilePrimary(btn.dataset.fecha, btn.dataset.mina, btn.dataset.equipo);
+    if (dailyReportState.mina === btn.dataset.mina) {
+      const rows = await CTAuth.fetchMatch('piezas', { mina: dailyReportState.mina, estado: 'ACTIVO' });
+      dailyReportState.activeTools = rows;
+      renderDailyReportTable();
+    }
+    await renderTodayReports();
+  } catch (err) {
+    alert('No se pudo eliminar el reporte (' + err.message + ').');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function populatePresentationMineSelect() {
   const sel = document.getElementById('presentationMineSelect');
   sel.innerHTML = '';

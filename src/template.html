@@ -126,6 +126,77 @@ __CSS__
   </section>
 </div>
 
+<!-- Pantalla del Digitalizador: carga el reporte diario de producción y
+     corrige (borra) reportes con error, directo contra Supabase — la app ya
+     es la fuente de datos, no una recarga de Excel. -->
+<div id="dailyReportScreen">
+  <div class="screen-header">
+    <div>
+      <h1>Reporte diario de producción</h1>
+      <p class="subtitle">Aris Mining Segovia — Sandra K, El Silencio, Providencia</p>
+    </div>
+    <div class="topbar-actions">
+      <span class="user-badge" id="dailyReportUserBadge"></span>
+      <button id="dailyReportLogoutBtn" class="ghost">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <section class="card">
+    <h3>Nuevo reporte</h3>
+    <p class="chart-sub">Elige la fecha, la mina y el equipo, escribe los metros solo en las herramientas que trabajaron ese turno y guarda.</p>
+    <div class="filterbar">
+      <div class="filter-group">
+        <label>Fecha</label>
+        <input type="date" id="drFecha">
+      </div>
+      <div class="filter-group">
+        <label>Mina</label>
+        <select id="drMina"><option value="">Selecciona…</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Equipo</label>
+        <select id="drEquipo" disabled><option value="">Selecciona una mina primero</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Tipo de perforación</label>
+        <select id="drTipo"><option value="">Selecciona…</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Operador</label>
+        <input type="text" id="drOperador" placeholder="Nombre del operador">
+      </div>
+      <div class="filter-group">
+        <label>Buscar herramienta</label>
+        <input type="search" id="drSearch" placeholder="Código, referencia, herramienta…">
+      </div>
+    </div>
+    <p class="empty-note" id="drEmptyNote">Selecciona una mina para ver sus herramientas activas.</p>
+    <div class="table-wrap" id="drTableWrap" hidden>
+      <table>
+        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th class="num">Metros Acumulados</th><th class="num">Metro Ideal</th><th class="num">Metros Hoy</th></tr></thead>
+        <tbody id="drTableBody"></tbody>
+      </table>
+    </div>
+    <div class="perf-selection-bar" id="drActionsBar" hidden>
+      <span class="perf-selection-count" id="drFillCount">0 herramientas con metros cargados</span>
+      <button class="small primary" id="drSaveBtn" type="button" disabled>Guardar reporte</button>
+    </div>
+    <p class="login-error" id="drError" hidden></p>
+    <p class="chart-sub" id="drSuccess" hidden></p>
+  </section>
+
+  <section class="card">
+    <h3>Reportes de <span id="drTodayLabel">la fecha seleccionada</span></h3>
+    <p class="chart-sub">Reportes ya guardados para la fecha y mina de arriba — bórralos aquí si hubo un error de carga.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Herramienta</th><th>Código Interno</th><th>Equipo</th><th>Tipo</th><th>Operador</th><th class="num">Metros</th><th></th></tr></thead>
+        <tbody id="drTodayBody"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
 <div id="app">
 
   <header class="topbar">

@@ -127,6 +127,36 @@ async function publishSharedBundle(bundle, sourceFilename) {
   await CTAuth.setDatasetMeta(sourceFilename, bundle.cpmIdealPorSarta || {});
 }
 
+// ---------- Reporte diario (Digitalizador) ----------
+// "piezas.metros_perforados" es un acumulado cacheado, no la fuente de
+// verdad — se recalcula siempre como la suma real de "producción" para ese
+// código, así que un reporte editado o borrado nunca deja el acumulado
+// desincronizado ("drift").
+async function refreshPiezaMetros(codigo_marcado) {
+  const rows = await CTAuth.fetchMatch('produccion', { codigo_marcado });
+  const total = rows.reduce((sum, r) => sum + (Number(r.metros) || 0), 0);
+  await CTAuth.updateMatch('piezas', { codigo_marcado }, { metros_perforados: total });
+  return total;
+}
+
+// Un reporte de un formato "wide" (varias herramientas de una misma sarta
+// reportando el mismo metraje simultáneamente) debe contar ese metraje una
+// sola vez en los totales — ver el comentario sobre "primary" en agg.js. Tras
+// cualquier inserción o borrado en un mismo (fecha, mina, equipo), esto deja
+// exactamente una fila marcada como la principal.
+async function reconcilePrimary(fecha, mina, equipo) {
+  const rows = await CTAuth.fetchMatch('produccion', { fecha, mina, equipo });
+  if (!rows.length) return;
+  const primarias = rows.filter(r => r.es_primario);
+  if (primarias.length === 0) {
+    await CTAuth.updateMatch('produccion', { id: rows[0].id }, { es_primario: true });
+  } else if (primarias.length > 1) {
+    for (let i = 1; i < primarias.length; i++) {
+      await CTAuth.updateMatch('produccion', { id: primarias[i].id }, { es_primario: false });
+    }
+  }
+}
+
 if (typeof module !== 'undefined') {
-  module.exports = { bundleToRows, rowsToBundle, dateStrToDay };
+  module.exports = { bundleToRows, rowsToBundle, dateStrToDay, refreshPiezaMetros, reconcilePrimary };
 }
