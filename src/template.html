@@ -83,6 +83,7 @@ __CSS__
     </div>
     <div class="topbar-actions">
       <button id="perfGoToolsBtn" class="ghost" hidden>Códigos y despachos</button>
+      <button id="perfGoReportsBtn" class="ghost" hidden>Informes de falla</button>
       <span class="user-badge" id="perfUserBadge"></span>
       <button id="perfLogoutBtn" class="ghost">Cerrar sesión</button>
     </div>
@@ -258,6 +259,7 @@ __CSS__
     </div>
     <div class="topbar-actions">
       <button id="toolsBackBtn" class="ghost">← Panel de rendimiento</button>
+      <button id="toolsGoReportsBtn" class="ghost">Informes de falla</button>
       <span class="user-badge" id="toolsUserBadge"></span>
       <button id="toolsLogoutBtn" class="ghost">Cerrar sesión</button>
     </div>
@@ -325,6 +327,113 @@ __CSS__
         <button class="small ghost" id="despachoCancelBtn" type="button">Cancelar</button>
         <button class="small primary" id="despachoConfirmBtn" type="button">Confirmar despacho</button>
       </div>
+    </div>
+  </section>
+</div>
+
+<!-- Pantalla del Supervisor: informes de análisis de falla premature. Solo
+     lista herramientas dadas de baja con motivo "falla prematura" (nunca
+     fin de vida útil) — ver handleConfirmBaja en ui.js, que es quien fija
+     ese motivo en el momento de la baja. El informe se genera 100% en el
+     navegador (nada se guarda en Supabase) y se imprime/exporta a PDF. -->
+<div id="reportsScreen">
+  <div class="screen-header">
+    <div>
+      <h1>Informes de falla</h1>
+      <p class="subtitle">Genera el informe de análisis de falla prematura de una herramienta dada de baja.</p>
+    </div>
+    <div class="topbar-actions">
+      <button id="reportsBackBtn" class="ghost">← Panel de rendimiento</button>
+      <button id="reportsGoToolsBtn" class="ghost">Códigos y despachos</button>
+      <span class="user-badge" id="reportsUserBadge"></span>
+      <button id="reportsLogoutBtn" class="ghost">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <section class="card" id="reportsListView">
+    <h3>Herramientas con falla prematura</h3>
+    <p class="chart-sub">Solo aparecen aquí las que se dieron de baja como falla (no las que cumplieron su vida útil).</p>
+    <div class="filterbar">
+      <div class="filter-group" style="flex:1; min-width:260px;">
+        <label>Buscar</label>
+        <input type="search" id="reportsSearch" placeholder="Código, referencia, herramienta…">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Fecha de falla</th><th>Causa</th><th>Modo de falla</th><th></th></tr></thead>
+        <tbody id="reportsListBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" id="reportsFormView" hidden>
+    <div class="topbar-actions" style="justify-content:flex-start; margin-bottom:14px;">
+      <button id="rptBackToListBtn" class="ghost" type="button">← Volver a la lista</button>
+    </div>
+    <h3>1. Información general</h3>
+    <div class="filterbar">
+      <div class="filter-group"><label>Fecha del informe</label><input type="date" id="rptFecha"></div>
+      <div class="filter-group" style="min-width:220px;"><label>Contrato</label><input type="text" id="rptContrato" placeholder="Ej: No.AMS-SRA044-25/1"></div>
+      <div class="filter-group"><label>Elaborado por</label><input type="text" id="rptElaboradoPor" placeholder="Nombre"></div>
+      <div class="filter-group"><label>Cargo</label><input type="text" id="rptCargo" placeholder="Ej: Supervisor de campo"></div>
+    </div>
+
+    <h3 style="margin-top:22px;">2. Identificación de la herramienta</h3>
+    <p class="chart-sub" id="rptToolSummary"></p>
+    <div class="filterbar">
+      <div class="filter-group"><label>Número de serie o lote</label><input type="text" id="rptNumSerie" placeholder="N/A"></div>
+      <div class="filter-group"><label>Fecha de respuesta en servicio</label><input type="date" id="rptFechaRespuesta"></div>
+    </div>
+
+    <h3 style="margin-top:22px;">3. Información operacional</h3>
+    <div class="filterbar">
+      <div class="filter-group"><label>Marca del equipo</label><input type="text" id="rptMarcaEquipo" placeholder="Ej: EPIROC"></div>
+      <div class="filter-group"><label>Modelo del equipo</label><input type="text" id="rptModeloEquipo" placeholder="Ej: S10S"></div>
+    </div>
+
+    <h3 style="margin-top:22px;">4. Descripción de la falla</h3>
+    <p class="chart-sub" id="rptFallaSummary"></p>
+
+    <h3 style="margin-top:22px;">5. Análisis técnico</h3>
+    <textarea id="rptAnalisis" rows="4" placeholder="Describe el análisis técnico de la falla…"></textarea>
+    <label style="display:block; margin-top:12px;">Hallazgos relevantes (uno por línea)</label>
+    <textarea id="rptHallazgos" rows="3" placeholder="Un hallazgo por línea…"></textarea>
+
+    <h3 style="margin-top:22px;">6. Conclusión técnica</h3>
+    <textarea id="rptConclusion" rows="4" placeholder="Conclusión técnica del análisis…"></textarea>
+
+    <h3 style="margin-top:22px;">7. Plan de acción</h3>
+    <div id="rptPlanBody"></div>
+    <button type="button" class="small ghost" id="rptPlanAddBtn">+ Agregar acción</button>
+
+    <h3 style="margin-top:22px;">8. Anexo fotográfico</h3>
+    <input type="file" id="rptFotos" accept="image/*" multiple>
+    <div id="rptFotosPreview" class="rpt-fotos-preview"></div>
+
+    <h3 style="margin-top:22px;">9. Aprobaciones</h3>
+    <div class="rpt-aprobadores">
+      <div class="rpt-aprobador">
+        <div class="filter-group"><label>Nombre</label><input type="text" id="rptAprob1Nombre"></div>
+        <div class="filter-group"><label>Cargo</label><input type="text" id="rptAprob1Cargo"></div>
+        <div class="filter-group"><label>Empresa</label><input type="text" id="rptAprob1Empresa"></div>
+      </div>
+      <div class="rpt-aprobador">
+        <div class="filter-group"><label>Nombre</label><input type="text" id="rptAprob2Nombre"></div>
+        <div class="filter-group"><label>Cargo</label><input type="text" id="rptAprob2Cargo"></div>
+        <div class="filter-group"><label>Empresa</label><input type="text" id="rptAprob2Empresa"></div>
+      </div>
+      <div class="rpt-aprobador">
+        <div class="filter-group"><label>Nombre</label><input type="text" id="rptAprob3Nombre"></div>
+        <div class="filter-group"><label>Cargo</label><input type="text" id="rptAprob3Cargo"></div>
+        <div class="filter-group"><label>Empresa</label><input type="text" id="rptAprob3Empresa"></div>
+      </div>
+    </div>
+
+    <p class="login-error" id="rptError" hidden></p>
+    <div class="perf-selection-bar">
+      <button class="small ghost" id="rptCancelBtn" type="button">Cancelar</button>
+      <button class="small primary" id="rptGenerarBtn" type="button">Vista previa / Imprimir</button>
     </div>
   </section>
 </div>

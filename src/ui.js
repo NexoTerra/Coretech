@@ -1117,7 +1117,7 @@ async function loadSharedBundleIntoApp() {
   } catch (e) { /* se queda con el bundle base embebido */ }
 }
 function showScreen(name) {
-  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users', 'screen-perf', 'screen-daily-report', 'screen-tools');
+  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users', 'screen-perf', 'screen-daily-report', 'screen-tools', 'screen-reports');
   document.body.classList.add('screen-' + name);
 }
 function mineInfo(slug) {
@@ -1208,6 +1208,7 @@ async function enterPerfScreen() {
     : `Metraje y rendimiento por pieza — ${minesToLoad.map(m => m.label).join(', ') || 'sin mina asignada'}`;
   document.getElementById('perfMinaFilterGroup').hidden = !isSupervisor;
   document.getElementById('perfGoToolsBtn').hidden = !isSupervisor;
+  document.getElementById('perfGoReportsBtn').hidden = !isSupervisor;
 
   const allRows = [];
   for (const m of minesToLoad) {
@@ -1238,6 +1239,11 @@ function wirePerfEvents() {
   if (!goToolsBtn.dataset.wired) {
     goToolsBtn.dataset.wired = '1';
     goToolsBtn.addEventListener('click', enterToolsScreen);
+  }
+  const goReportsBtn = document.getElementById('perfGoReportsBtn');
+  if (!goReportsBtn.dataset.wired) {
+    goReportsBtn.dataset.wired = '1';
+    goReportsBtn.addEventListener('click', enterReportsScreen);
   }
   const search = document.getElementById('perfSearch');
   if (!search.dataset.wired) {
@@ -1891,6 +1897,8 @@ async function enterToolsScreen() {
 function wireToolsEvents() {
   const backBtn = document.getElementById('toolsBackBtn');
   if (!backBtn.dataset.wired) { backBtn.dataset.wired = '1'; backBtn.addEventListener('click', enterPerfScreen); }
+  const goReportsBtn = document.getElementById('toolsGoReportsBtn');
+  if (!goReportsBtn.dataset.wired) { goReportsBtn.dataset.wired = '1'; goReportsBtn.addEventListener('click', enterReportsScreen); }
   const logoutBtn = document.getElementById('toolsLogoutBtn');
   if (!logoutBtn.dataset.wired) { logoutBtn.dataset.wired = '1'; logoutBtn.addEventListener('click', handleLogout); }
 
@@ -2015,6 +2023,351 @@ async function handleConfirmDespacho() {
   } finally {
     confirmBtn.disabled = false;
   }
+}
+
+// ============ informes de falla (Supervisor) ============
+// El informe se genera 100% en el navegador (nada se guarda en Supabase) y
+// se imprime/exporta a PDF, igual que la exportación del panel de
+// rendimiento. Solo lista piezas dadas de baja como falla prematura
+// (motivo_bucket='CONDICION_OPERATIVA') — las de fin de vida útil nunca
+// aparecen aquí, por diseño (ver handleConfirmBaja).
+let reportsState = { failures: [], search: '', tool: null, fotos: [] };
+let rptPlanRowSeq = 0;
+const RPT_DEFAULTS_KEY = 'ct_report_defaults_v1';
+
+function loadReportDefaults() {
+  try { return JSON.parse(localStorage.getItem(RPT_DEFAULTS_KEY) || '{}'); } catch (e) { return {}; }
+}
+function saveReportDefaults(defaults) {
+  try { localStorage.setItem(RPT_DEFAULTS_KEY, JSON.stringify(defaults)); } catch (e) { /* modo privado u otro bloqueo — solo se pierde el autocompletado */ }
+}
+
+async function enterReportsScreen() {
+  showScreen('reports');
+  document.getElementById('reportsUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
+  showReportsList();
+  document.getElementById('reportsSearch').value = '';
+  reportsState.search = '';
+  wireReportsEvents();
+  reportsState.failures = await CTAuth.fetchMatch('piezas', { estado: 'INACTIVO', motivo_bucket: 'CONDICION_OPERATIVA' });
+  renderReportsList();
+}
+
+function wireReportsEvents() {
+  const backBtn = document.getElementById('reportsBackBtn');
+  if (!backBtn.dataset.wired) { backBtn.dataset.wired = '1'; backBtn.addEventListener('click', enterPerfScreen); }
+  const goToolsBtn = document.getElementById('reportsGoToolsBtn');
+  if (!goToolsBtn.dataset.wired) { goToolsBtn.dataset.wired = '1'; goToolsBtn.addEventListener('click', enterToolsScreen); }
+  const logoutBtn = document.getElementById('reportsLogoutBtn');
+  if (!logoutBtn.dataset.wired) { logoutBtn.dataset.wired = '1'; logoutBtn.addEventListener('click', handleLogout); }
+  const search = document.getElementById('reportsSearch');
+  if (!search.dataset.wired) {
+    search.dataset.wired = '1';
+    search.addEventListener('input', (e) => { reportsState.search = e.target.value; renderReportsList(); });
+  }
+  const listBody = document.getElementById('reportsListBody');
+  if (!listBody.dataset.wired) { listBody.dataset.wired = '1'; listBody.addEventListener('click', handleGenerarInformeClick); }
+  const backToListBtn = document.getElementById('rptBackToListBtn');
+  if (!backToListBtn.dataset.wired) { backToListBtn.dataset.wired = '1'; backToListBtn.addEventListener('click', showReportsList); }
+  const cancelBtn = document.getElementById('rptCancelBtn');
+  if (!cancelBtn.dataset.wired) { cancelBtn.dataset.wired = '1'; cancelBtn.addEventListener('click', showReportsList); }
+  const planAddBtn = document.getElementById('rptPlanAddBtn');
+  if (!planAddBtn.dataset.wired) { planAddBtn.dataset.wired = '1'; planAddBtn.addEventListener('click', () => addPlanRow()); }
+  const planBody = document.getElementById('rptPlanBody');
+  if (!planBody.dataset.wired) {
+    planBody.dataset.wired = '1';
+    planBody.addEventListener('click', (e) => { const btn = e.target.closest('.rpt-plan-remove'); if (btn) removePlanRow(btn.dataset.idx); });
+  }
+  const fotosInput = document.getElementById('rptFotos');
+  if (!fotosInput.dataset.wired) { fotosInput.dataset.wired = '1'; fotosInput.addEventListener('change', handleFotosChange); }
+  const fotosPreview = document.getElementById('rptFotosPreview');
+  if (!fotosPreview.dataset.wired) {
+    fotosPreview.dataset.wired = '1';
+    fotosPreview.addEventListener('click', (e) => { const btn = e.target.closest('.rpt-foto-remove'); if (btn) removeFoto(Number(btn.dataset.idx)); });
+  }
+  const generarBtn = document.getElementById('rptGenerarBtn');
+  if (!generarBtn.dataset.wired) { generarBtn.dataset.wired = '1'; generarBtn.addEventListener('click', handleGenerarPreview); }
+}
+
+function renderReportsList() {
+  let rows = reportsState.failures;
+  if (reportsState.search) {
+    const q = reportsState.search.toLowerCase();
+    rows = rows.filter(r => [r.codigo_marcado, r.ref_code, r.herramienta].some(v => String(v || '').toLowerCase().includes(q)));
+  }
+  rows = rows.slice().sort((a, b) => (b.fecha_final || '').localeCompare(a.fecha_final || ''));
+  const tbody = document.getElementById('reportsListBody');
+  tbody.innerHTML = rows.length ? rows.map(r => `<tr>
+    <td>${esc(r.ref_code || '—')}</td><td>${esc(r.herramienta || '—')}</td><td>${esc(r.codigo_marcado)}</td>
+    <td>${esc(r.mina || '—')}</td><td>${esc(r.fecha_final || '—')}</td>
+    <td>${esc(r.causa || '—')}</td><td>${esc(r.falla || '—')}</td>
+    <td><button type="button" class="small primary rpt-generar-btn" data-codigo="${esc(r.codigo_marcado)}">Generar informe</button></td>
+  </tr>`).join('') : `<tr><td colspan="8" class="empty-note">No hay herramientas con falla prematura registradas todavía.</td></tr>`;
+}
+
+function handleGenerarInformeClick(e) {
+  const btn = e.target.closest('.rpt-generar-btn');
+  if (!btn) return;
+  const tool = reportsState.failures.find(r => r.codigo_marcado === btn.dataset.codigo);
+  if (tool) openReportForm(tool);
+}
+
+function showReportsList() {
+  document.getElementById('reportsListView').hidden = false;
+  document.getElementById('reportsFormView').hidden = true;
+  reportsState.tool = null;
+}
+
+function openReportForm(tool) {
+  reportsState.tool = tool;
+  reportsState.fotos = [];
+  document.getElementById('reportsListView').hidden = true;
+  document.getElementById('reportsFormView').hidden = false;
+  document.getElementById('rptError').hidden = true;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const defaults = loadReportDefaults();
+  document.getElementById('rptFecha').value = today;
+  document.getElementById('rptContrato').value = defaults.contrato || '';
+  document.getElementById('rptElaboradoPor').value = defaults.elaboradoPor || '';
+  document.getElementById('rptCargo').value = defaults.cargo || '';
+  document.getElementById('rptNumSerie').value = 'N/A';
+  document.getElementById('rptFechaRespuesta').value = today;
+  document.getElementById('rptMarcaEquipo').value = defaults.marcaEquipo || '';
+  document.getElementById('rptModeloEquipo').value = defaults.modeloEquipo || '';
+  document.getElementById('rptAnalisis').value = '';
+  document.getElementById('rptHallazgos').value = '';
+  document.getElementById('rptConclusion').value = '';
+  document.getElementById('rptFotos').value = '';
+  document.getElementById('rptFotosPreview').innerHTML = '';
+
+  [1, 2, 3].forEach(n => {
+    const d = (defaults.aprobadores || {})[n] || {};
+    document.getElementById(`rptAprob${n}Nombre`).value = d.nombre || '';
+    document.getElementById(`rptAprob${n}Cargo`).value = d.cargo || '';
+    document.getElementById(`rptAprob${n}Empresa`).value = d.empresa || '';
+  });
+
+  const pct = tool.metro_garantizado ? (tool.metros_perforados / tool.metro_garantizado * 100) : null;
+  document.getElementById('rptToolSummary').innerHTML =
+    `<strong>${esc(tool.herramienta || '—')}</strong> · Referencia ${esc(tool.ref_code || '—')} · Código ${esc(tool.codigo_marcado)}<br>` +
+    `Fecha de inicio: ${esc(tool.fecha_inicio || '—')} · Fecha de falla: ${esc(tool.fecha_final || '—')} · Mina: ${esc(tool.mina || '—')} · Equipo: ${esc(tool.equipo || '—')}<br>` +
+    `Metros alcanzados: ${fmtNum(tool.metros_perforados || 0)} · Metro garantizado: ${tool.metro_garantizado != null ? fmtNum(tool.metro_garantizado) : '—'} · % cumplimiento: ${pct != null ? pct.toFixed(0) + '%' : '—'}`;
+  document.getElementById('rptFallaSummary').innerHTML =
+    `<strong>Modo de falla:</strong> ${esc(tool.falla || '—')} &nbsp;·&nbsp; <strong>Causa de falla:</strong> ${esc(tool.causa || '—')}`;
+
+  document.getElementById('rptPlanBody').innerHTML = '';
+  addPlanRow();
+}
+
+function addPlanRow() {
+  const idx = rptPlanRowSeq++;
+  const div = el(`<div class="rpt-plan-row" data-idx="${idx}">
+    <div class="filter-group"><label>Acción correctiva</label><input type="text" class="rpt-plan-accion"></div>
+    <div class="filter-group"><label>Responsable</label><input type="text" class="rpt-plan-resp"></div>
+    <div class="filter-group"><label>Fecha compromiso</label><input type="date" class="rpt-plan-fecha"></div>
+    <button type="button" class="small ghost danger rpt-plan-remove" data-idx="${idx}">Quitar</button>
+  </div>`);
+  document.getElementById('rptPlanBody').appendChild(div);
+}
+function removePlanRow(idx) {
+  const row = document.querySelector(`.rpt-plan-row[data-idx="${idx}"]`);
+  if (row) row.remove();
+}
+
+function handleFotosChange(e) {
+  const files = Array.from(e.target.files || []);
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = () => { reportsState.fotos.push({ name: file.name, dataUrl: reader.result }); renderFotosPreview(); };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+}
+function removeFoto(idx) {
+  reportsState.fotos.splice(idx, 1);
+  renderFotosPreview();
+}
+function renderFotosPreview() {
+  document.getElementById('rptFotosPreview').innerHTML = reportsState.fotos.map((f, i) => `
+    <div class="rpt-foto-thumb"><img src="${f.dataUrl}" alt="${esc(f.name)}"><button type="button" class="rpt-foto-remove" data-idx="${i}">✕</button></div>
+  `).join('');
+}
+
+function showRptError(msg) {
+  const el = document.getElementById('rptError');
+  el.hidden = false; el.textContent = msg;
+}
+
+function handleGenerarPreview() {
+  const errEl = document.getElementById('rptError');
+  errEl.hidden = true;
+  const tool = reportsState.tool;
+  if (!tool) return;
+
+  const data = {
+    fecha: document.getElementById('rptFecha').value,
+    contrato: document.getElementById('rptContrato').value.trim(),
+    elaboradoPor: document.getElementById('rptElaboradoPor').value.trim(),
+    cargo: document.getElementById('rptCargo').value.trim(),
+    numSerie: document.getElementById('rptNumSerie').value.trim() || 'N/A',
+    fechaRespuesta: document.getElementById('rptFechaRespuesta').value,
+    marcaEquipo: document.getElementById('rptMarcaEquipo').value.trim(),
+    modeloEquipo: document.getElementById('rptModeloEquipo').value.trim(),
+    analisis: document.getElementById('rptAnalisis').value.trim(),
+    hallazgos: document.getElementById('rptHallazgos').value.split('\n').map(s => s.trim()).filter(Boolean),
+    conclusion: document.getElementById('rptConclusion').value.trim(),
+    plan: Array.from(document.querySelectorAll('.rpt-plan-row')).map(row => ({
+      accion: row.querySelector('.rpt-plan-accion').value.trim(),
+      responsable: row.querySelector('.rpt-plan-resp').value.trim(),
+      fecha: row.querySelector('.rpt-plan-fecha').value,
+    })).filter(r => r.accion || r.responsable || r.fecha),
+    fotos: reportsState.fotos,
+    aprobadores: [1, 2, 3].map(n => ({
+      nombre: document.getElementById(`rptAprob${n}Nombre`).value.trim(),
+      cargo: document.getElementById(`rptAprob${n}Cargo`).value.trim(),
+      empresa: document.getElementById(`rptAprob${n}Empresa`).value.trim(),
+    })),
+  };
+
+  if (!data.fecha) return showRptError('Elige la fecha del informe.');
+  if (!data.contrato) return showRptError('Escribe el número de contrato.');
+  if (!data.elaboradoPor) return showRptError('Escribe quién elabora el informe.');
+  if (!data.cargo) return showRptError('Escribe el cargo de quien elabora el informe.');
+  if (!data.marcaEquipo) return showRptError('Escribe la marca del equipo de perforación.');
+  if (!data.modeloEquipo) return showRptError('Escribe el modelo del equipo de perforación.');
+  if (!data.analisis) return showRptError('Escribe el análisis técnico.');
+  if (!data.conclusion) return showRptError('Escribe la conclusión técnica.');
+  if (!data.aprobadores[0].nombre) return showRptError('Escribe al menos el nombre del primer aprobador.');
+
+  saveReportDefaults({
+    contrato: data.contrato, elaboradoPor: data.elaboradoPor, cargo: data.cargo,
+    marcaEquipo: data.marcaEquipo, modeloEquipo: data.modeloEquipo,
+    aprobadores: { 1: data.aprobadores[0], 2: data.aprobadores[1], 3: data.aprobadores[2] },
+  });
+
+  printReportHtml(buildReportHtml(tool, data));
+}
+
+function buildReportHtml(tool, d) {
+  const pct = tool.metro_garantizado ? (tool.metros_perforados / tool.metro_garantizado * 100) : null;
+  const logoImg = document.getElementById('logoImgLight');
+  const logoSrc = logoImg ? logoImg.src : '';
+  const kv = (rows) => `<table class="kv">${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${v}</td></tr>`).join('')}</table>`;
+
+  const seccionesTop = `
+    <h2>1. Información general</h2>
+    ${kv([
+      ['Fecha del informe', esc(fmtFechaLarga(d.fecha))],
+      ['Cliente / Mina', esc('Aris Mining Segovia' + (tool.mina ? ' — ' + tool.mina : ''))],
+      ['Contrato', esc(d.contrato)],
+      ['Elaborado por', esc(d.elaboradoPor)],
+      ['Cargo', esc(d.cargo)],
+    ])}
+    <h2>2. Identificación de la herramienta</h2>
+    ${kv([
+      ['Tipo de herramienta', esc(tool.herramienta || '—')],
+      ['Referencia', esc(tool.ref_code || '—')],
+      ['Código de producto', esc(tool.codigo_marcado)],
+      ['Número de serie o lote', esc(d.numSerie)],
+      ['Fecha de inicio', esc(tool.fecha_inicio ? fmtFechaLarga(tool.fecha_inicio) : '—')],
+      ['Fecha de falla', esc(tool.fecha_final ? fmtFechaLarga(tool.fecha_final) : '—')],
+      ['Fecha de respuesta en servicio', esc(fmtFechaLarga(d.fechaRespuesta))],
+    ])}
+    <h2>3. Información operacional</h2>
+    ${kv([['Marca del equipo', esc(d.marcaEquipo)], ['Modelo del equipo', esc(d.modeloEquipo)]])}
+    <table class="datatable">
+      <thead><tr><th>Código</th><th>Metros alcanzados</th><th>Metro garantizado</th><th>% cumplimiento</th></tr></thead>
+      <tbody><tr>
+        <td>${esc(tool.codigo_marcado)}</td><td class="num">${fmtNum(tool.metros_perforados || 0)}</td>
+        <td class="num">${tool.metro_garantizado != null ? fmtNum(tool.metro_garantizado) : '—'}</td>
+        <td class="num">${pct != null ? pct.toFixed(0) + '%' : '—'}</td>
+      </tr></tbody>
+    </table>
+    <h2>4. Descripción de la falla</h2>
+    ${kv([['Modo de falla', esc(tool.falla || '—')], ['Causa de falla', esc(tool.causa || '—')]])}
+    <h2>5. Análisis técnico</h2>
+    <p class="narrative">${esc(d.analisis).replace(/\n/g, '<br>')}</p>
+    ${d.hallazgos.length ? `<p class="subhead">Hallazgos relevantes</p><ul>${d.hallazgos.map(h => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
+    <h2>6. Conclusión técnica</h2>
+    <p class="narrative">${esc(d.conclusion).replace(/\n/g, '<br>')}</p>
+    <h2>7. Plan de acción</h2>
+    ${d.plan.length ? `<table class="datatable">
+      <thead><tr><th>Acción correctiva</th><th>Responsable</th><th>Fecha compromiso</th></tr></thead>
+      <tbody>${d.plan.map(p => `<tr><td>${esc(p.accion)}</td><td>${esc(p.responsable)}</td><td>${esc(p.fecha || '—')}</td></tr>`).join('')}</tbody>
+    </table>` : '<p class="narrative">Sin acciones registradas.</p>'}
+    <h2>8. Anexo fotográfico</h2>
+    ${d.fotos.length ? `<div class="photos">${d.fotos.map(f => `<img src="${f.dataUrl}" alt="${esc(f.name)}">`).join('')}</div>` : '<p class="narrative">Sin fotografías adjuntas.</p>'}
+    <h2>9. Aprobaciones</h2>
+    <div class="aprobaciones">
+      ${d.aprobadores.filter(a => a.nombre).map(a => `
+        <div class="aprobador">
+          <p class="aprob-nombre">${esc(a.nombre)}</p>
+          <p class="aprob-cargo">${esc(a.cargo || '—')}</p>
+          <p class="aprob-empresa">${esc(a.empresa || '—')}</p>
+          <p class="firma">Firma: ______________________</p>
+        </div>`).join('')}
+    </div>
+  `;
+
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>Informe de falla — ${esc(tool.codigo_marcado)}</title>
+<style>
+  :root{ --navy:#183058; --border:#DFE4EC; --text:#16233C; --text-dim:#5B6579; }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:var(--text); margin:28px; font-size:13px;}
+  header{display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:2px solid var(--navy); padding-bottom:12px; margin-bottom:8px;}
+  header img{height:34px;}
+  h1{font-size:16px; color:var(--navy); margin:0 0 18px; text-align:center;}
+  h2{font-size:13.5px; color:var(--navy); margin:20px 0 8px; border-bottom:1px solid var(--border); padding-bottom:4px;}
+  .subhead{font-weight:700; margin:10px 0 4px;}
+  table.kv{width:100%; border-collapse:collapse; margin-bottom:4px;}
+  table.kv th{text-align:left; width:220px; color:var(--text-dim); font-weight:600; padding:5px 8px; border:1px solid var(--border); background:#F7F9FC; font-size:12px;}
+  table.kv td{padding:5px 8px; border:1px solid var(--border); font-size:12.5px;}
+  table.datatable{width:100%; border-collapse:collapse; margin:6px 0 4px;}
+  table.datatable th{background:#F7F9FC; color:var(--text-dim); font-weight:600; padding:6px 8px; border:1px solid var(--border); font-size:11.5px; text-transform:uppercase;}
+  table.datatable td{padding:6px 8px; border:1px solid var(--border); font-size:12.5px;}
+  td.num, th.num{text-align:right; font-variant-numeric:tabular-nums;}
+  p.narrative{line-height:1.5; margin:4px 0 8px;}
+  ul{margin:2px 0 10px; padding-left:20px;}
+  li{margin-bottom:3px;}
+  .photos{display:flex; flex-wrap:wrap; gap:10px; margin:6px 0;}
+  .photos img{width:220px; height:160px; object-fit:cover; border:1px solid var(--border); border-radius:4px;}
+  .aprobaciones{display:flex; flex-wrap:wrap; gap:24px; margin-top:14px;}
+  .aprobador{min-width:180px;}
+  .aprob-nombre{font-weight:700; margin:0;}
+  .aprob-cargo, .aprob-empresa{margin:1px 0; color:var(--text-dim); font-size:12px;}
+  .firma{margin-top:22px;}
+  footer{margin-top:26px; font-size:10px; color:var(--text-dim); border-top:1px solid var(--border); padding-top:8px;}
+  @media print{ body{margin:14mm;} h2{page-break-after:avoid;} tr, .aprobador{page-break-inside:avoid;} }
+</style></head>
+<body>
+  <header>
+    ${logoSrc ? `<img src="${logoSrc}" alt="CORE TECH">` : '<div></div>'}
+    <div style="text-align:right; font-size:11px; color:var(--text-dim);">Generado el ${esc(fmtFechaLarga(new Date().toISOString().slice(0, 10)))}</div>
+  </header>
+  <h1>INFORME DE ANÁLISIS DE FALLA PREMATURA DE HERRAMIENTAS DE PERFORACIÓN</h1>
+  ${seccionesTop}
+  <footer>CoreTech · Aris Mining — informe generado automáticamente a partir de los datos de la herramienta dada de baja.</footer>
+</body></html>`;
+}
+
+function printReportHtml(html) {
+  let frame = document.getElementById('rptPrintFrame');
+  if (!frame) {
+    frame = document.createElement('iframe');
+    frame.id = 'rptPrintFrame';
+    frame.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0;';
+    document.body.appendChild(frame);
+  }
+  frame.onload = () => {
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    catch (e) { /* si el navegador bloquea el print automático, el informe queda visible en el iframe */ }
+  };
+  const doc = frame.contentDocument || frame.contentWindow.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
 }
 
 function populatePresentationMineSelect() {

@@ -43,17 +43,18 @@ body{
 
 /* ---- login gate ---- */
 body.authed #loginScreen{display:none;}
-#app, #hubScreen, #usersScreen, #perfScreen, #dailyReportScreen, #toolsScreen{display:none;}
+#app, #hubScreen, #usersScreen, #perfScreen, #dailyReportScreen, #toolsScreen, #reportsScreen{display:none;}
 body.screen-hub #hubScreen{display:flex;}
 body.screen-app #app{display:block;}
 body.screen-users #usersScreen{display:block;}
 body.screen-perf #perfScreen{display:block;}
 body.screen-daily-report #dailyReportScreen{display:flex;}
 body.screen-tools #toolsScreen{display:flex;}
+body.screen-reports #reportsScreen{display:flex;}
 #perfScreen{max-width:1400px; margin:0 auto; padding:20px 24px 60px;}
 #perfScreen .screen-header{max-width:none; margin:0 0 18px; padding:0;}
-#dailyReportScreen, #toolsScreen{max-width:1200px; margin:0 auto; padding:20px 24px 60px; flex-direction:column; gap:20px;}
-#dailyReportScreen .screen-header, #toolsScreen .screen-header{max-width:none; margin:0; padding:0;}
+#dailyReportScreen, #toolsScreen, #reportsScreen{max-width:1200px; margin:0 auto; padding:20px 24px 60px; flex-direction:column; gap:20px;}
+#dailyReportScreen .screen-header, #toolsScreen .screen-header, #reportsScreen .screen-header{max-width:none; margin:0; padding:0;}
 #loginScreen{
   min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
 }
@@ -240,6 +241,24 @@ button:disabled:hover{border-color:var(--border); color:var(--text);}
 .metros-input:focus{border-color:var(--cyan); outline:none;}
 button.danger{color:var(--red);}
 button.danger:hover{border-color:var(--red); background:rgba(214,69,69,.08); color:var(--red);}
+
+textarea{
+  width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border);
+  background:var(--surface-2); color:var(--text); font-size:13px; font-family:var(--font-body);
+  resize:vertical; min-height:70px;
+}
+textarea:focus{border-color:var(--cyan); outline:none;}
+#reportsFormView label{display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint); margin-bottom:6px;}
+#reportsFormView h3{margin-bottom:4px;}
+.rpt-plan-row{display:grid; grid-template-columns:2fr 1fr 140px auto; gap:10px; align-items:end; margin-bottom:10px;}
+.rpt-plan-row .filter-group{min-width:0;}
+@media (max-width:760px){ .rpt-plan-row{grid-template-columns:1fr;} }
+.rpt-aprobadores{display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:16px; margin-top:10px;}
+.rpt-aprobador{display:flex; flex-direction:column; gap:10px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:14px;}
+.rpt-fotos-preview{display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;}
+.rpt-foto-thumb{position:relative; width:110px; height:80px; border-radius:8px; overflow:hidden; border:1px solid var(--border);}
+.rpt-foto-thumb img{width:100%; height:100%; object-fit:cover; display:block;}
+.rpt-foto-thumb button{position:absolute; top:2px; right:2px; padding:2px 6px; font-size:11px; line-height:1; background:rgba(22,35,60,.75); color:#fff; border:none; border-radius:5px;}
 .filter-actions{margin-left:auto; align-self:flex-end;}
 
 /* ---- KPI row ---- */
