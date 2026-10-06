@@ -427,6 +427,63 @@ __CSS__
   </section>
 </div>
 
+<!-- Pantalla del Administrador: ver, buscar, corregir y eliminar lo que está
+     guardado en la base de datos (producción, piezas, catálogo, sartas) y revisar
+     que los acumulados de metros y las filas principales sean consistentes. -->
+<div id="dataScreen">
+  <div class="screen-header">
+    <div>
+      <h1>Datos</h1>
+      <p class="subtitle">Ver y corregir lo que está guardado en la base de datos.</p>
+    </div>
+    <div class="topbar-actions">
+      <button id="dataHomeBtn" class="ghost">Inicio</button>
+      <span class="user-badge" id="dataUserBadge"></span>
+      <button id="dataLogoutBtn" class="ghost">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <section class="card">
+    <h3>Tablas</h3>
+    <div class="chipset" id="dataTableChips"></div>
+    <div class="filterbar" style="margin-top:14px;">
+      <div class="filter-group" style="flex:1; min-width:260px;">
+        <label>Buscar</label>
+        <input type="search" id="dataSearch" placeholder="Código, mina, equipo, operador…">
+      </div>
+    </div>
+    <p class="chart-sub" id="dataInfo"></p>
+    <div class="table-wrap">
+      <table>
+        <thead id="dataHead"></thead>
+        <tbody id="dataBody"></tbody>
+      </table>
+    </div>
+    <div class="pagination" id="dataPagination"></div>
+  </section>
+
+  <section class="card" id="dataEditCard" hidden>
+    <h3 id="dataEditTitle">Editar</h3>
+    <p class="chart-sub" id="dataEditHint"></p>
+    <div class="filterbar" id="dataEditFields"></div>
+    <p class="login-error" id="dataEditError" hidden></p>
+    <div class="perf-selection-bar">
+      <button class="small ghost" id="dataEditCancel" type="button">Cancelar</button>
+      <button class="small primary" id="dataEditSave" type="button">Guardar cambios</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Revisar consistencia</h3>
+    <p class="chart-sub">El acumulado de cada herramienta (piezas) debe ser la suma de sus reportes (producción), y cada fila de un reporte debe tener exactamente una herramienta principal. Estas revisiones lo comprueban y, si encuentran diferencias, te dejan corregirlas.</p>
+    <div class="perf-selection-bar">
+      <button class="small" id="dataCheckAcumBtn" type="button">Revisar acumulados de metros</button>
+      <button class="small" id="dataCheckPrimBtn" type="button">Revisar filas principales</button>
+    </div>
+    <div id="dataCheckResult"></div>
+  </section>
+</div>
+
 <div id="app">
 
   <header class="topbar">

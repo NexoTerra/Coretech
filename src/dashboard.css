@@ -43,7 +43,7 @@ body{
 
 /* ---- login gate ---- */
 body.authed #loginScreen{display:none;}
-#app, #hubScreen, #usersScreen, #perfScreen, #dailyReportScreen, #toolsScreen, #reportsScreen{display:none;}
+#app, #hubScreen, #usersScreen, #perfScreen, #dailyReportScreen, #toolsScreen, #reportsScreen, #dataScreen{display:none;}
 body.screen-hub #hubScreen{display:flex;}
 body.screen-app #app{display:block;}
 body.screen-users #usersScreen{display:block;}
@@ -51,10 +51,12 @@ body.screen-perf #perfScreen{display:block;}
 body.screen-daily-report #dailyReportScreen{display:flex;}
 body.screen-tools #toolsScreen{display:flex;}
 body.screen-reports #reportsScreen{display:flex;}
+body.screen-data #dataScreen{display:flex;}
 #perfScreen{max-width:1400px; margin:0 auto; padding:20px 24px 60px;}
 #perfScreen .screen-header{max-width:none; margin:0 0 18px; padding:0;}
-#dailyReportScreen, #toolsScreen, #reportsScreen{max-width:1200px; margin:0 auto; padding:20px 24px 60px; flex-direction:column; gap:20px;}
-#dailyReportScreen .screen-header, #toolsScreen .screen-header, #reportsScreen .screen-header{max-width:none; margin:0; padding:0;}
+#dataScreen{max-width:1400px;}
+#dailyReportScreen, #toolsScreen, #reportsScreen, #dataScreen{max-width:1200px; margin:0 auto; padding:20px 24px 60px; flex-direction:column; gap:20px;}
+#dailyReportScreen .screen-header, #toolsScreen .screen-header, #reportsScreen .screen-header, #dataScreen .screen-header{max-width:none; margin:0; padding:0;}
 #loginScreen{
   min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
 }
@@ -384,3 +386,19 @@ footer b{color:var(--text-dim);}
 .dr-metros-val{font-family:var(--font-title); font-weight:800; font-size:17px; color:var(--navy); font-variant-numeric:tabular-nums; padding:6px 0;}
 :root[data-theme="dark"] .dr-metros-val, :root:not([data-theme="light"]) .dr-metros-val{color:var(--cyan3);}
 @media (max-width:1180px){ .dr-row{grid-template-columns:repeat(2,minmax(0,1fr));} }
+
+/* ---- pantalla de Datos (administrador) ---- */
+#dataScreen{max-width:1400px !important;}
+#dataScreen td, #dataScreen th{white-space:nowrap;}
+#dataScreen td.dt-actions{text-align:right;}
+#dataScreen td.dt-actions button + button{margin-left:4px;}
+.data-check-table{margin-top:10px;}
+.data-check-ok{color:var(--green); font-weight:600;}
+.data-check-warn{color:var(--orange); font-weight:600;}
+
+/* encabezados de pantalla en celular: que el usuario/acciones bajen en vez de superponerse */
+@media (max-width:640px){
+  .screen-header{flex-wrap:wrap; align-items:flex-start;}
+  .screen-header .topbar-actions{justify-content:flex-start; width:100%;}
+  .screen-header .user-badge{white-space:normal; overflow-wrap:anywhere;}
+}

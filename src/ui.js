@@ -1138,7 +1138,7 @@ async function loadSharedBundleIntoApp() {
   } catch (e) { /* se queda con el bundle base embebido */ }
 }
 function showScreen(name) {
-  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users', 'screen-perf', 'screen-daily-report', 'screen-tools', 'screen-reports');
+  document.body.classList.remove('screen-hub', 'screen-app', 'screen-users', 'screen-perf', 'screen-daily-report', 'screen-tools', 'screen-reports', 'screen-data');
   document.body.classList.add('screen-' + name);
 }
 function mineInfo(slug) {
@@ -1184,6 +1184,7 @@ function renderHub() {
       ['📝', 'Reporte diario', 'Cargar metraje diario y dar de baja herramientas', enterDigitalizadorScreen],
       ['🔧', 'Códigos y despachos', 'Registrar herramientas nuevas y despacharlas', enterToolsScreen],
       ['📄', 'Informes de falla', 'Generar el informe de análisis de falla prematura', enterReportsScreen],
+      ['🗄️', 'Datos', 'Ver y corregir la base de datos', enterDataScreen],
     ].forEach(([icon, title, sub, handler]) => {
       const c = el(`<button type="button" class="hub-card">
         <span class="hub-card-icon">${icon}</span>
@@ -2494,6 +2495,356 @@ function printReportHtml(html) {
   doc.open();
   doc.write(html);
   doc.close();
+}
+
+// ============ datos (Administrador) ============
+// Vista de la base de datos para el administrador: ver, buscar, editar y
+// eliminar filas de producción, piezas, catálogo y sartas. Las políticas de
+// Supabase ya dan al admin escritura total en estas tablas; aquí solo se
+// añade la parte que no se ve desde el Table Editor: al tocar producción se
+// recalculan los acumulados de piezas y se mantiene una fila principal por
+// grupo, y hay revisiones de consistencia.
+const DATA_TABLES = {
+  produccion: {
+    label: 'Producción diaria', pk: 'id',
+    sort: (a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')) || (b.id - a.id),
+    show: ['fecha', 'mina', 'equipo', 'codigo_marcado', 'herramienta', 'metros', 'es_primario', 'operador', 'grupo_id'],
+    cols: [
+      { k: 'id', label: 'ID', t: 'num', ro: true }, { k: 'fecha', label: 'Fecha', t: 'date' },
+      { k: 'mina', label: 'Mina' }, { k: 'tipo', label: 'Tipo' }, { k: 'equipo', label: 'Equipo' },
+      { k: 'codigo_marcado', label: 'Código' }, { k: 'herramienta', label: 'Herramienta' }, { k: 'ref_code', label: 'Referencia' },
+      { k: 'metros', label: 'Metros', t: 'num' }, { k: 'es_primario', label: 'Principal', t: 'bool' },
+      { k: 'operador', label: 'Operador' }, { k: 'operador2', label: 'Operador 2' }, { k: 'turno', label: 'Turno' },
+      { k: 'jornada', label: 'Jornada' }, { k: 'frente', label: 'Frente' }, { k: 'reporte_no', label: 'N° reporte' },
+      { k: 'barrenos', label: 'Barrenos', t: 'num' }, { k: 'longitud', label: 'Longitud (m)', t: 'num' },
+      { k: 'grupo_id', label: 'Grupo', ro: true },
+    ],
+  },
+  piezas: {
+    label: 'Piezas (herramientas)', pk: 'codigo_marcado',
+    sort: (a, b) => String(a.codigo_marcado).localeCompare(String(b.codigo_marcado), 'es', { numeric: true }),
+    show: ['codigo_marcado', 'herramienta', 'estado', 'mina', 'equipo', 'metros_perforados', 'metro_garantizado', 'fecha_inicio', 'fecha_final', 'causa'],
+    cols: [
+      { k: 'codigo_marcado', label: 'Código', ro: true }, { k: 'ref_code', label: 'Referencia' }, { k: 'herramienta', label: 'Herramienta' },
+      { k: 'metros_perforados', label: 'Metros acumulados', t: 'num' }, { k: 'metro_garantizado', label: 'Metro garantizado', t: 'num' },
+      { k: 'estado', label: 'Estado' }, { k: 'motivo_bucket', label: 'Motivo de baja' }, { k: 'causa', label: 'Causa' }, { k: 'falla', label: 'Modo de falla' },
+      { k: 'mina', label: 'Mina' }, { k: 'equipo', label: 'Equipo' }, { k: 'fecha_inicio', label: 'Fecha de inicio', t: 'date' },
+      { k: 'fecha_final', label: 'Fecha final / baja', t: 'date' }, { k: 'precio_usd', label: 'Precio USD', t: 'num' }, { k: 'operador', label: 'Operador' },
+    ],
+  },
+  catalog_refs: {
+    label: 'Catálogo de referencias', pk: 'ref_code',
+    sort: (a, b) => String(a.ref_code).localeCompare(String(b.ref_code), 'es', { numeric: true }),
+    show: ['ref_code', 'descripcion', 'precio', 'metro_garantizado', 'metro_aceptable', 'cpm_ideal'],
+    cols: [
+      { k: 'ref_code', label: 'Referencia', ro: true }, { k: 'descripcion', label: 'Descripción' }, { k: 'precio', label: 'Precio USD', t: 'num' },
+      { k: 'metro_garantizado', label: 'Metro garantizado', t: 'num' }, { k: 'metro_aceptable', label: 'Metro aceptable', t: 'num' }, { k: 'cpm_ideal', label: 'CPM ideal', t: 'num' },
+    ],
+  },
+  sartas: {
+    label: 'Sartas', pk: 'id',
+    sort: (a, b) => String(a.nombre_sarta).localeCompare(String(b.nombre_sarta), 'es') || (a.id - b.id),
+    show: ['nombre_sarta', 'ref_code'],
+    cols: [{ k: 'id', label: 'ID', t: 'num', ro: true }, { k: 'nombre_sarta', label: 'Sarta' }, { k: 'ref_code', label: 'Referencia' }],
+  },
+};
+const DATA_PAGE_SIZE = 25;
+let dataState = { table: 'produccion', cache: {}, search: '', page: 1, editing: null, pendingFix: null };
+
+function dataCol(def, k) { return def.cols.find(c => c.k === k) || { k, label: k }; }
+function dataFmt(col, v) {
+  if (v === null || v === undefined || v === '') return '—';
+  if (col.t === 'bool') return v ? 'Sí' : 'No';
+  if (col.t === 'num') return Number(v).toLocaleString('es-CO', { maximumFractionDigits: 3 });
+  if (col.k === 'grupo_id') return String(v).slice(0, 8) + '…';
+  return String(v);
+}
+
+async function enterDataScreen() {
+  if (!currentUser || currentUser.role !== 'admin') return;
+  showScreen('data');
+  document.getElementById('dataUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
+  dataState.search = ''; dataState.page = 1; dataState.editing = null; dataState.pendingFix = null;
+  document.getElementById('dataSearch').value = '';
+  document.getElementById('dataEditCard').hidden = true;
+  document.getElementById('dataCheckResult').innerHTML = '';
+  wireDataEvents();
+  renderDataChips();
+  await loadDataTable(dataState.table, true);
+}
+
+function wireDataEvents() {
+  const once = (id, ev, fn) => { const e = document.getElementById(id); if (!e.dataset.wired) { e.dataset.wired = '1'; e.addEventListener(ev, fn); } };
+  once('dataHomeBtn', 'click', goToHub);
+  once('dataLogoutBtn', 'click', handleLogout);
+  once('dataSearch', 'input', (e) => { dataState.search = e.target.value; dataState.page = 1; renderDataTable(); });
+  once('dataTableChips', 'click', (e) => {
+    const b = e.target.closest('button[data-table]');
+    if (b) { closeDataEdit(); dataState.search = ''; document.getElementById('dataSearch').value = ''; loadDataTable(b.dataset.table, false); }
+  });
+  once('dataBody', 'click', (e) => {
+    const eb = e.target.closest('.data-edit-btn'), db = e.target.closest('.data-del-btn');
+    const btn = eb || db;
+    if (!btn) return;
+    const def = DATA_TABLES[dataState.table];
+    const row = (dataState.cache[dataState.table] || []).find(r => String(r[def.pk]) === btn.dataset.pk);
+    if (!row) return;
+    if (eb) openDataEdit(row); else deleteDataRow(row);
+  });
+  once('dataPagination', 'click', (e) => {
+    const b = e.target.closest('button[data-dir]');
+    if (b) { dataState.page += Number(b.dataset.dir); renderDataTable(); }
+  });
+  once('dataEditCancel', 'click', closeDataEdit);
+  once('dataEditSave', 'click', saveDataEdit);
+  once('dataCheckAcumBtn', 'click', dataCheckAcumulados);
+  once('dataCheckPrimBtn', 'click', dataCheckPrincipales);
+  once('dataCheckResult', 'click', (e) => {
+    if (e.target.closest('#dataFixAcumBtn')) dataFixAcumulados();
+    if (e.target.closest('#dataFixPrimBtn')) dataFixPrincipales();
+  });
+}
+
+function renderDataChips() {
+  document.getElementById('dataTableChips').innerHTML = Object.entries(DATA_TABLES).map(([name, d]) =>
+    `<button type="button" class="chip ${name === dataState.table ? 'active' : ''}" data-table="${name}">${esc(d.label)}</button>`).join('');
+}
+
+async function loadDataTable(name, force) {
+  dataState.table = name; dataState.page = 1;
+  renderDataChips();
+  const info = document.getElementById('dataInfo');
+  if (!dataState.cache[name] || force) {
+    info.textContent = 'Cargando…';
+    document.getElementById('dataBody').innerHTML = '';
+    try { dataState.cache[name] = await CTAuth.fetchTable(name); }
+    catch (e) { info.textContent = 'No se pudo cargar la tabla (' + e.message + ').'; return; }
+  }
+  renderDataTable();
+}
+
+function renderDataTable() {
+  const def = DATA_TABLES[dataState.table];
+  const all = dataState.cache[dataState.table] || [];
+  const cols = def.show.filter(k => !all.length || k in all[0]);
+  let rows = all;
+  if (dataState.search) {
+    const q = dataState.search.toLowerCase();
+    rows = rows.filter(r => Object.values(r).some(v => v !== null && v !== undefined && String(v).toLowerCase().includes(q)));
+  }
+  rows = rows.slice().sort(def.sort);
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / DATA_PAGE_SIZE));
+  dataState.page = Math.min(Math.max(1, dataState.page), totalPages);
+  const pageRows = rows.slice((dataState.page - 1) * DATA_PAGE_SIZE, dataState.page * DATA_PAGE_SIZE);
+
+  document.getElementById('dataInfo').textContent =
+    `${fmtNum(total)} ${dataState.search ? 'filas coinciden' : 'filas'} en "${dataState.table}"${dataState.search ? ` (de ${fmtNum(all.length)})` : ''}.`;
+  document.getElementById('dataHead').innerHTML = '<tr>' + cols.map(k => {
+    const c = dataCol(def, k);
+    return `<th class="${c.t === 'num' ? 'num' : ''}">${esc(c.label)}</th>`;
+  }).join('') + '<th></th></tr>';
+  document.getElementById('dataBody').innerHTML = pageRows.length ? pageRows.map(r => {
+    const pk = esc(r[def.pk]);
+    return '<tr>' + cols.map(k => {
+      const c = dataCol(def, k);
+      return `<td class="${c.t === 'num' ? 'num' : ''}"${k === 'grupo_id' && r[k] ? ` title="${esc(r[k])}"` : ''}>${esc(dataFmt(c, r[k]))}</td>`;
+    }).join('') + `<td class="dt-actions"><button type="button" class="small ghost data-edit-btn" data-pk="${pk}">Editar</button><button type="button" class="small ghost danger data-del-btn" data-pk="${pk}">Eliminar</button></td></tr>`;
+  }).join('') : `<tr><td colspan="${cols.length + 1}" class="empty-note">Sin resultados.</td></tr>`;
+  document.getElementById('dataPagination').innerHTML = `
+    <button class="small" data-dir="-1" ${dataState.page <= 1 ? 'disabled' : ''}>← Anterior</button>
+    <span>Página ${dataState.page} de ${totalPages}</span>
+    <button class="small" data-dir="1" ${dataState.page >= totalPages ? 'disabled' : ''}>Siguiente →</button>`;
+}
+
+function openDataEdit(row) {
+  const def = DATA_TABLES[dataState.table];
+  dataState.editing = row;
+  document.getElementById('dataEditTitle').textContent = `Editar — ${def.label} (${def.pk}: ${row[def.pk]})`;
+  document.getElementById('dataEditHint').textContent = dataState.table === 'produccion'
+    ? 'Al guardar se recalculan los acumulados de metros de las herramientas afectadas, y se mantiene una sola fila principal por grupo.'
+    : (dataState.table === 'piezas' ? 'El acumulado de metros normalmente se calcula solo a partir de producción; edítalo a mano solo si sabes por qué.' : '');
+  document.getElementById('dataEditError').hidden = true;
+  document.getElementById('dataEditFields').innerHTML = def.cols.filter(c => c.k in row).map(c => {
+    const v = row[c.k];
+    const id = 'dataf_' + c.k;
+    let input;
+    if (c.ro) input = `<input type="text" id="${id}" value="${esc(v ?? '')}" disabled>`;
+    else if (c.t === 'bool') input = `<select id="${id}"><option value="true" ${v ? 'selected' : ''}>Sí</option><option value="false" ${!v ? 'selected' : ''}>No</option></select>`;
+    else if (c.t === 'num') input = `<input type="number" step="any" id="${id}" value="${esc(v ?? '')}">`;
+    else if (c.t === 'date') input = `<input type="date" id="${id}" value="${esc(v ?? '')}">`;
+    else input = `<input type="text" id="${id}" value="${esc(v ?? '')}">`;
+    return `<div class="filter-group"><label>${esc(c.label)}</label>${input}</div>`;
+  }).join('');
+  const card = document.getElementById('dataEditCard');
+  card.hidden = false;
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function closeDataEdit() {
+  dataState.editing = null;
+  document.getElementById('dataEditCard').hidden = true;
+}
+
+// Mantiene exactamente una fila principal en un grupo de reporte (ver
+// es_primario en agg.js: la principal es la que cuenta el metraje una vez).
+async function fixGroupPrimary(grupo) {
+  if (!grupo) return;
+  const rows = await CTAuth.fetchMatch('produccion', { grupo_id: grupo });
+  if (!rows.length) return;
+  const prim = rows.filter(r => r.es_primario);
+  if (prim.length === 0) await CTAuth.updateMatch('produccion', { id: rows[0].id }, { es_primario: true });
+  else for (let i = 1; i < prim.length; i++) await CTAuth.updateMatch('produccion', { id: prim[i].id }, { es_primario: false });
+}
+
+async function saveDataEdit() {
+  const def = DATA_TABLES[dataState.table];
+  const row = dataState.editing;
+  const errEl = document.getElementById('dataEditError');
+  errEl.hidden = true;
+  if (!row) return;
+  const patch = {};
+  for (const c of def.cols) {
+    if (c.ro || !(c.k in row)) continue;
+    const raw = document.getElementById('dataf_' + c.k).value;
+    let val;
+    if (c.t === 'bool') val = raw === 'true';
+    else if (c.t === 'num') {
+      if (raw === '') val = null;
+      else { val = Number(raw); if (isNaN(val)) { errEl.hidden = false; errEl.textContent = `"${c.label}" debe ser un número.`; return; } }
+    } else val = raw.trim() === '' ? null : raw.trim();
+    if ((row[c.k] ?? null) !== val) patch[c.k] = val;
+  }
+  if (!Object.keys(patch).length) { closeDataEdit(); return; }
+  if (dataState.table === 'produccion' && (patch.fecha === null || patch.metros === null || patch.codigo_marcado === null)) {
+    errEl.hidden = false; errEl.textContent = 'Fecha, metros y código no pueden quedar vacíos.'; return;
+  }
+  const saveBtn = document.getElementById('dataEditSave');
+  saveBtn.disabled = true;
+  try {
+    await CTAuth.updateMatch(dataState.table, { [def.pk]: row[def.pk] }, patch);
+    if (dataState.table === 'produccion') {
+      if ('metros' in patch || 'codigo_marcado' in patch) {
+        const codes = new Set([row.codigo_marcado, patch.codigo_marcado ?? row.codigo_marcado].filter(Boolean));
+        for (const cm of codes) await refreshPiezaMetros(cm);
+      }
+      if ('es_primario' in patch) await fixGroupPrimary(row.grupo_id);
+      dataState.cache.piezas = null;
+      if ('es_primario' in patch && row.grupo_id) dataState.cache.produccion = null;
+    }
+    if (dataState.cache[dataState.table]) Object.assign(row, patch);
+    closeDataEdit();
+    if (!dataState.cache[dataState.table]) await loadDataTable(dataState.table, true); else renderDataTable();
+  } catch (e) {
+    errEl.hidden = false; errEl.textContent = 'No se pudo guardar (' + e.message + ').';
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+async function deleteDataRow(row) {
+  const def = DATA_TABLES[dataState.table];
+  const extra = dataState.table === 'piezas' ? ' Sus reportes en producción NO se borran.' : '';
+  if (!confirm(`¿Eliminar esta fila de "${dataState.table}" (${def.pk}: ${row[def.pk]})?${extra} No se puede deshacer.`)) return;
+  try {
+    await CTAuth.deleteMatch(dataState.table, { [def.pk]: row[def.pk] });
+    if (dataState.table === 'produccion') {
+      if (row.codigo_marcado) await refreshPiezaMetros(row.codigo_marcado);
+      if (row.grupo_id) await fixGroupPrimary(row.grupo_id);
+      dataState.cache.piezas = null;
+    }
+    dataState.cache[dataState.table] = null;
+    await loadDataTable(dataState.table, true);
+  } catch (e) {
+    alert('No se pudo eliminar (' + e.message + ').');
+  }
+}
+
+// ---- revisiones de consistencia ----
+async function dataCheckAcumulados() {
+  const out = document.getElementById('dataCheckResult');
+  out.innerHTML = '<p class="chart-sub">Calculando…</p>';
+  try {
+    const [prod, piezas] = await Promise.all([CTAuth.fetchTable('produccion'), CTAuth.fetchTable('piezas')]);
+    dataState.cache.produccion = prod; dataState.cache.piezas = piezas;
+    const sum = new Map();
+    prod.forEach(p => { if (p.codigo_marcado) sum.set(p.codigo_marcado, (sum.get(p.codigo_marcado) || 0) + (Number(p.metros) || 0)); });
+    const piezaCodes = new Set(piezas.map(p => p.codigo_marcado));
+    const diffs = []; let sinReportes = 0;
+    piezas.forEach(p => {
+      const mp = Number(p.metros_perforados) || 0;
+      if (!sum.has(p.codigo_marcado)) { if (mp > 0) sinReportes++; return; }
+      const s = Math.round(sum.get(p.codigo_marcado) * 1000) / 1000;
+      if (Math.abs(mp - s) > 0.005) diffs.push({ cm: p.codigo_marcado, actual: mp, suma: s });
+    });
+    const huerfanos = Array.from(sum.keys()).filter(c => !piezaCodes.has(c)).length;
+    dataState.pendingFix = { acum: diffs };
+    diffs.sort((a, b) => Math.abs(b.suma - b.actual) - Math.abs(a.suma - a.actual));
+    let html = `<p class="${diffs.length ? 'data-check-warn' : 'data-check-ok'}">${diffs.length
+      ? `${fmtNum(diffs.length)} de ${fmtNum(piezas.length)} piezas tienen un acumulado distinto a la suma de sus reportes.`
+      : `Los acumulados coinciden con la suma de producción en las ${fmtNum(piezas.length)} piezas.`}</p>`;
+    if (sinReportes) html += `<p class="chart-sub">${fmtNum(sinReportes)} piezas tienen metros acumulados pero ningún reporte diario (vienen del Excel); no se tocan.</p>`;
+    if (huerfanos) html += `<p class="chart-sub">${fmtNum(huerfanos)} códigos tienen reportes de producción pero no existen en piezas.</p>`;
+    if (diffs.length) {
+      html += `<div class="table-wrap data-check-table"><table><thead><tr><th>Código</th><th class="num">Acumulado actual</th><th class="num">Suma de reportes</th><th class="num">Diferencia</th></tr></thead><tbody>` +
+        diffs.slice(0, 15).map(d => `<tr><td>${esc(d.cm)}</td><td class="num">${fmtNum(d.actual, 2)}</td><td class="num">${fmtNum(d.suma, 2)}</td><td class="num">${fmtNum(d.suma - d.actual, 2)}</td></tr>`).join('') +
+        `</tbody></table></div>${diffs.length > 15 ? `<p class="chart-sub">Mostrando las 15 mayores diferencias.</p>` : ''}` +
+        `<div class="perf-selection-bar"><button class="small primary" id="dataFixAcumBtn" type="button">Corregir ${fmtNum(diffs.length)} acumulados</button></div>`;
+    }
+    out.innerHTML = html;
+  } catch (e) { out.innerHTML = `<p class="login-error">No se pudo revisar (${esc(e.message)}).</p>`; }
+}
+
+async function dataFixAcumulados() {
+  const list = (dataState.pendingFix && dataState.pendingFix.acum) || [];
+  if (!list.length) return;
+  if (!confirm(`¿Corregir el acumulado de ${list.length} piezas para que sea la suma de sus reportes de producción?`)) return;
+  const btn = document.getElementById('dataFixAcumBtn'); btn.disabled = true; btn.textContent = 'Corrigiendo…';
+  try {
+    for (let i = 0; i < list.length; i += 10) {
+      await Promise.all(list.slice(i, i + 10).map(d => CTAuth.updateMatch('piezas', { codigo_marcado: d.cm }, { metros_perforados: d.suma })));
+    }
+    dataState.cache.piezas = null;
+    await dataCheckAcumulados();
+  } catch (e) {
+    document.getElementById('dataCheckResult').insertAdjacentHTML('beforeend', `<p class="login-error">No se pudo corregir (${esc(e.message)}).</p>`);
+  }
+}
+
+async function dataCheckPrincipales() {
+  const out = document.getElementById('dataCheckResult');
+  out.innerHTML = '<p class="chart-sub">Calculando…</p>';
+  try {
+    const prod = await CTAuth.fetchTable('produccion');
+    dataState.cache.produccion = prod;
+    const groups = new Map();
+    prod.forEach(p => { if (p.grupo_id) { if (!groups.has(p.grupo_id)) groups.set(p.grupo_id, []); groups.get(p.grupo_id).push(p); } });
+    const bad = [];
+    groups.forEach((rows, g) => { const n = rows.filter(r => r.es_primario).length; if (n !== 1) bad.push({ g, rows, n }); });
+    dataState.pendingFix = { prim: bad };
+    out.innerHTML = bad.length
+      ? `<p class="data-check-warn">${fmtNum(bad.length)} de ${fmtNum(groups.size)} filas de reporte no tienen exactamente una herramienta principal (${fmtNum(bad.filter(b => b.n === 0).length)} sin ninguna, ${fmtNum(bad.filter(b => b.n > 1).length)} con más de una). Eso duplica o pierde metros en los totales.</p>
+         <div class="perf-selection-bar"><button class="small primary" id="dataFixPrimBtn" type="button">Corregir ${fmtNum(bad.length)} filas</button></div>`
+      : `<p class="data-check-ok">Las ${fmtNum(groups.size)} filas de reporte tienen exactamente una herramienta principal.</p>`;
+  } catch (e) { out.innerHTML = `<p class="login-error">No se pudo revisar (${esc(e.message)}).</p>`; }
+}
+
+async function dataFixPrincipales() {
+  const bad = (dataState.pendingFix && dataState.pendingFix.prim) || [];
+  if (!bad.length) return;
+  if (!confirm(`¿Corregir ${bad.length} filas de reporte dejando exactamente una herramienta principal en cada una?`)) return;
+  const btn = document.getElementById('dataFixPrimBtn'); btn.disabled = true; btn.textContent = 'Corrigiendo…';
+  try {
+    const ops = [];
+    bad.forEach(({ rows, n }) => {
+      if (n === 0) ops.push(() => CTAuth.updateMatch('produccion', { id: rows[0].id }, { es_primario: true }));
+      else rows.filter(r => r.es_primario).slice(1).forEach(r => ops.push(() => CTAuth.updateMatch('produccion', { id: r.id }, { es_primario: false })));
+    });
+    for (let i = 0; i < ops.length; i += 10) await Promise.all(ops.slice(i, i + 10).map(f => f()));
+    dataState.cache.produccion = null;
+    await dataCheckPrincipales();
+  } catch (e) {
+    document.getElementById('dataCheckResult').insertAdjacentHTML('beforeend', `<p class="login-error">No se pudo corregir (${esc(e.message)}).</p>`);
+  }
 }
 
 function populatePresentationMineSelect() {
