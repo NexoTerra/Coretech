@@ -227,7 +227,7 @@ function motivoBaja(bundle, life) {
 }
 
 // ---------- CPM (costo por metro) ----------
-// Sigue la convención heredada de Marmato: CPM = precio unitario / metros logrados.
+// Convención del cliente: CPM = precio unitario / metros logrados.
 // cpmIdeal usa el metro garantizado (catálogo); cpmReal usa el promedio de metros
 // realmente perforados por las piezas usadas de esa referencia. Solo se cuentan
 // piezas con fecha de baja registrada (ya finalizaron su vida útil) — una pieza

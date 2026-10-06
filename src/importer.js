@@ -360,7 +360,7 @@ function buildBundleFromLongFormat(workbook, sourceName) {
   };
 }
 
-// ---------- "Marmato" workbook: MGAR / CONTADOR DE METROS / CODIGOS ALFA NUMERICOS / SARTAS ----------
+// ---------- Libro de Segovia: MGAR / CONTADOR DE METROS / CODIGOS ALFA NUMERICOS / SARTAS ----------
 // CONTADOR DE METROS is the source of truth (BD is just an automatic melt of
 // it in this workbook and has a REFERENCIA lookup gap, so it's bypassed
 // entirely). Pieces are reconstructed by aggregating each code's rows;
@@ -383,7 +383,7 @@ const TOTALIZADOR_COLS = {
   modo: ['MODO DE DESCARTE'], causa: ['CAUSA DE DESCARTE'], estado: ['ESTADO'],
 };
 
-const MARMATO_TOOL_COLS = [
+const CODIGOS_TOOL_COLS = [
   ['SHANK', ['SHANK'], ['DESCRIP SHANK']],
   ['ACOPLE', ['ACOPLE'], ['DESCRIP ACOPLE']],
   ['BARRENA', ['BARRENA'], ['DESCRIP BARRENA']],
@@ -398,7 +398,7 @@ const CODIGOS_ALFA_COLS = {
   cod: ['COD MARCADO'], refcode: ['REFERENCIA'], desc: ['DESCRIPCION'], fechaentrega: ['FECHA DE ENTREGA'],
 };
 
-function buildBundleFromMarmatoFormat(workbook, sourceName) {
+function buildBundleFromCodigosFormat(workbook, sourceName) {
   const EPOCH = '2020-01-01';
   const D_mina = new Dict_(), D_tipo = new Dict_(), D_equipo = new Dict_(), D_ref = new Dict_(),
         D_herr = new Dict_(), D_estado = new Dict_(), D_causa = new Dict_(), D_falla = new Dict_(),
@@ -538,7 +538,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
   {
     const { headers, data } = sheetToRows(workbook, contadorSheet);
     const c = {}; for (const k in CONTADOR_COLS) c[k] = colIndex(headers, CONTADOR_COLS[k]);
-    const toolCols = MARMATO_TOOL_COLS.map(([cat, codeA, descA]) => [cat, colIndex(headers, codeA), colIndex(headers, descA)]);
+    const toolCols = CODIGOS_TOOL_COLS.map(([cat, codeA, descA]) => [cat, colIndex(headers, codeA), colIndex(headers, descA)]);
     if (c.fecha < 0 || c.metros < 0) {
       throw new Error('La hoja "' + contadorSheet + '" no tiene las columnas mínimas (FECHA DE REPORTE, TOTAL METROS).');
     }
@@ -628,7 +628,7 @@ function buildBundleFromMarmatoFormat(workbook, sourceName) {
 // when the imported file doesn't carry its own catalog sheet.
 function buildBundleFromWorkbook(workbook, sourceName, fallbackCatalog) {
   if (findSheet(workbook, MGAR_SHEET_ALIASES) && findSheet(workbook, CONTADOR_SHEET_ALIASES) && findSheet(workbook, CODIGOS_ALFA_SHEET_ALIASES)) {
-    return buildBundleFromMarmatoFormat(workbook, sourceName);
+    return buildBundleFromCodigosFormat(workbook, sourceName);
   }
   const wideSheetName = findSheet(workbook, WIDE_SHEET_ALIASES);
   if (wideSheetName) {
@@ -638,7 +638,7 @@ function buildBundleFromWorkbook(workbook, sourceName, fallbackCatalog) {
 }
 
 // El libro real trae hojas que ningún formato usa (p.ej. "BD"/"BASE PBI" en
-// el formato Segovia/Marmato, con decenas de miles de filas de resúmenes
+// el formato de Segovia, con decenas de miles de filas de resúmenes
 // para Power BI) — leerlas igual con XLSX.read() es lo que hace que importar
 // un archivo grande congele la pestaña ("la página no responde"). Esto
 // calcula, a partir de solo los NOMBRES de hoja (lectura liviana con

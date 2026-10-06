@@ -5,20 +5,12 @@ const MONTH_ABBR = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT',
 
 const MINES = [
   { slug: 'segovia', label: 'Aris Mining Segovia', sub: 'Sandra K · El Silencio · Providencia', icon: '⛏️' },
-  { slug: 'marmato', label: 'Aris Mining Marmato', sub: 'Aún sin datos importados', icon: '⛏️' },
 ];
 const ROLE_LABELS = {
   admin: 'Administrador', viewer: 'Visualizador',
   supervisor: 'Supervisor', digitalizador: 'Digitalizador', tecnico: 'Técnico',
 };
-function emptyBundle() {
-  return {
-    meta: { epoch: '2020-01-01', generated: '', source: '' },
-    dict: { mina: [], tipo: [], equipo: [], ref: [], herr: [], estado: [], causa: [], falla: [], operador: [] },
-    catalog: {}, prod: [], life: [], sartas: {},
-  };
-}
-const MINE_DEFAULT_BUNDLES = { segovia: window.__DATA_BUNDLE__, marmato: emptyBundle() };
+const MINE_DEFAULT_BUNDLES = { segovia: window.__DATA_BUNDLE__ };
 
 let currentMine = null;
 let presentationMode = false;
@@ -980,10 +972,6 @@ function handleFile(file) {
       herrForRefCache.clear();
       populateFilterOptions();
       renderAll();
-      if (currentMine !== 'segovia') {
-        showImportStatus(`Cargado: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}". La base de datos compartida para esta mina aún no está lista, así que por ahora esto solo se ve en tu navegador.`, 'ok');
-        return;
-      }
       showImportStatus(`Cargado en tu vista: ${fmtNum(newBundle.prod.length)} registros y ${fmtNum(newBundle.life.length)} piezas desde "${file.name}". Guardando para todos los usuarios…`, 'info');
     } catch (err) {
       showImportStatus('No se pudo procesar el archivo: ' + err.message, 'err');
@@ -1224,15 +1212,11 @@ let perfState = { search: '', mina: '', page: 1, allRows: [], selected: new Set(
 const PERF_PAGE_SIZE = 20;
 
 async function loadBundleForPerf(slug) {
-  let bundle = MINE_DEFAULT_BUNDLES[slug] || emptyBundle();
-  // La base de datos compartida todavía es una sola (sin separar por mina);
-  // hasta que se estructure por mina, solo Segovia se sincroniza con ella.
-  if (slug === 'segovia') {
-    if (cachedSharedBundle) { bundle = cachedSharedBundle; }
-    else {
-      try { const shared = await loadSharedBundle(); if (shared) { bundle = shared; cachedSharedBundle = shared; } }
-      catch (e) { /* se queda con el bundle base embebido */ }
-    }
+  let bundle = MINE_DEFAULT_BUNDLES[slug];
+  if (cachedSharedBundle) { bundle = cachedSharedBundle; }
+  else {
+    try { const shared = await loadSharedBundle(); if (shared) { bundle = shared; cachedSharedBundle = shared; } }
+    catch (e) { /* se queda con el bundle base embebido */ }
   }
   return bundle;
 }
@@ -1545,10 +1529,8 @@ function renderPerfTable() {
 }
 
 // ============ reporte diario (Digitalizador) ============
-// Las 3 minas son sub-sitios de la operación de Segovia (ver MINES) — igual
-// que en el panel de rendimiento, no "Segovia vs. Marmato". Marmato no tiene
-// datos publicados en Supabase todavía, así que este formulario solo aplica
-// a Segovia por ahora.
+// Las 3 minas son sub-sitios de la operación de Segovia (ver MINES), la única
+// operación de la plataforma.
 const MINAS_SEGOVIA = ['SANDRA K', 'EL SILENCIO', 'PROVIDENCIA'];
 const TIPOS_PERFORACION = ['AVANCE', 'ESCARIADO', 'SOSTENIMIENTO', 'ESCAREADORA'];
 let dailyReportState = { fecha: '', mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null };
@@ -2869,14 +2851,12 @@ async function enterMine(slug, opts) {
   document.title = 'CORE TECH · ' + info.label;
   document.getElementById('presentationBadge').hidden = !presentationMode;
   if (presentationMode) populatePresentationMineSelect();
-  DEFAULT_BUNDLE = MINE_DEFAULT_BUNDLES[slug] || emptyBundle();
+  DEFAULT_BUNDLE = MINE_DEFAULT_BUNDLES[slug];
   BUNDLE = DEFAULT_BUNDLE;
   filters = EMPTY_FILTERS();
   herrForRefCache.clear();
   await refreshConciliacion();
-  // La base de datos compartida todavía es una sola (sin separar por mina);
-  // hasta que se estructure por mina, solo Segovia se sincroniza con ella.
-  if (slug === 'segovia') await loadSharedBundleIntoApp();
+  await loadSharedBundleIntoApp();
   showScreen('app');
   if (!appInitialized) { appInitialized = true; initApp(); }
   else { populateFilterOptions(); renderAll(); }
