@@ -146,44 +146,29 @@ __CSS__
   </div>
 
   <section class="card">
-    <h3>Nuevo reporte</h3>
-    <p class="chart-sub">Elige la fecha, la mina y el equipo, escribe los metros solo en las herramientas que trabajaron ese turno y guarda.</p>
+    <h3>Nuevo reporte de perforación</h3>
+    <p class="chart-sub">Mismo formato del registro diario en papel: datos de la jornada arriba y, abajo, una fila por cada combinación de herramientas usada. Cuando cambias una herramienta (por ejemplo la broca cada 6 a 10 barrenos) agregas una fila nueva. Los metros se calculan solos: barrenos × longitud.</p>
     <div class="filterbar">
-      <div class="filter-group">
-        <label>Fecha</label>
-        <input type="date" id="drFecha">
-      </div>
-      <div class="filter-group">
-        <label>Mina</label>
-        <select id="drMina"><option value="">Selecciona…</option></select>
-      </div>
-      <div class="filter-group">
-        <label>Equipo</label>
-        <select id="drEquipo" disabled><option value="">Selecciona una mina primero</option></select>
-      </div>
-      <div class="filter-group">
-        <label>Tipo de perforación</label>
-        <select id="drTipo"><option value="">Selecciona…</option></select>
-      </div>
-      <div class="filter-group">
-        <label>Operador</label>
-        <input type="text" id="drOperador" placeholder="Nombre del operador">
-      </div>
-      <div class="filter-group">
-        <label>Buscar herramienta</label>
-        <input type="search" id="drSearch" placeholder="Código, referencia, herramienta…">
-      </div>
+      <div class="filter-group"><label>Fecha</label><input type="date" id="drFecha"></div>
+      <div class="filter-group"><label>Mina</label><select id="drMina"><option value="">Selecciona…</option></select></div>
+      <div class="filter-group"><label>Frente</label><input type="text" id="drFrente" placeholder="Ej: Nivel 5 Norte"></div>
+      <div class="filter-group"><label>Equipo</label><select id="drEquipo" disabled><option value="">Selecciona una mina primero</option></select></div>
+      <div class="filter-group"><label>Operador 1</label><input type="text" id="drOperador" placeholder="Nombre del operador"></div>
+      <div class="filter-group"><label>Operador 2</label><input type="text" id="drOperador2" placeholder="Opcional"></div>
+      <div class="filter-group"><label>Tipo de perforación</label><select id="drTipo"><option value="">Selecciona…</option></select></div>
+      <div class="filter-group"><label>Turno</label><select id="drTurno"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
+      <div class="filter-group"><label>Jornada</label><select id="drJornada"><option value="">—</option><option value="DIA">Día</option><option value="NOCHE">Noche</option></select></div>
+      <div class="filter-group"><label>N° de reporte</label><input type="text" id="drReporteNo" placeholder="Opcional"></div>
     </div>
-    <p class="empty-note" id="drEmptyNote">Selecciona una mina para ver sus herramientas activas.</p>
-    <div class="table-wrap" id="drTableWrap" hidden>
-      <table>
-        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th class="num">Metros Acumulados</th><th class="num">Metro Ideal</th><th class="num">Metros Hoy</th></tr></thead>
-        <tbody id="drTableBody"></tbody>
-      </table>
-    </div>
-    <div class="perf-selection-bar" id="drActionsBar" hidden>
-      <span class="perf-selection-count" id="drFillCount">0 herramientas con metros cargados</span>
-      <button class="small primary" id="drSaveBtn" type="button" disabled>Guardar reporte</button>
+    <p class="empty-note" id="drEmptyNote">Selecciona una mina y un equipo para armar las filas del reporte.</p>
+    <div id="drRowsWrap" hidden>
+      <div id="drRowsBody"></div>
+      <div class="perf-selection-bar">
+        <button class="small" id="drAddRowBtn" type="button">+ Agregar fila</button>
+        <button class="small" id="drDupRowBtn" type="button" title="Copia la última fila (mismas herramientas y longitud) para registrar un cambio de broca u otra herramienta">Duplicar última fila (cambio de herramienta)</button>
+        <span class="perf-selection-count" id="drTotalMetros">0 m en total</span>
+        <button class="small primary" id="drSaveBtn" type="button" disabled>Guardar reporte</button>
+      </div>
     </div>
     <p class="login-error" id="drError" hidden></p>
     <p class="chart-sub" id="drSuccess" hidden></p>
@@ -191,10 +176,10 @@ __CSS__
 
   <section class="card">
     <h3>Reportes de <span id="drTodayLabel">la fecha seleccionada</span></h3>
-    <p class="chart-sub">Reportes ya guardados para la fecha y mina de arriba — bórralos aquí si hubo un error de carga.</p>
+    <p class="chart-sub">Filas ya guardadas para la fecha y mina de arriba — elimina una fila aquí si hubo un error de carga.</p>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Herramienta</th><th>Código Interno</th><th>Equipo</th><th>Tipo</th><th>Operador</th><th class="num">Metros</th><th></th></tr></thead>
+        <thead><tr><th>Equipo</th><th>Turno</th><th>Operador</th><th>Herramientas</th><th class="num">Barrenos × long. (m)</th><th class="num">Metros</th><th></th></tr></thead>
         <tbody id="drTodayBody"></tbody>
       </table>
     </div>

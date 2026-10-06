@@ -374,3 +374,13 @@ footer b{color:var(--text-dim);}
 .methodology-note{margin:16px 0 0; padding-top:12px; border-top:1px solid var(--border); font-size:11px;}
 
 .badge-partial{font-size:9.5px; color:var(--text-faint); font-weight:600;}
+
+/* ---- reporte diario: filas de herramientas (formato del registro en papel) ---- */
+.dr-row{display:grid; grid-template-columns:repeat(4,minmax(0,1.4fr)) 92px 108px 86px auto; gap:10px 12px; align-items:end; padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); margin-bottom:10px;}
+.dr-row .filter-group{min-width:0;}
+.dr-row select{font-size:12.5px;}
+.dr-metros-out{display:flex; flex-direction:column; gap:6px;}
+.dr-metros-label{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-faint);}
+.dr-metros-val{font-family:var(--font-title); font-weight:800; font-size:17px; color:var(--navy); font-variant-numeric:tabular-nums; padding:6px 0;}
+:root[data-theme="dark"] .dr-metros-val, :root:not([data-theme="light"]) .dr-metros-val{color:var(--cyan3);}
+@media (max-width:1180px){ .dr-row{grid-template-columns:repeat(2,minmax(0,1fr));} }

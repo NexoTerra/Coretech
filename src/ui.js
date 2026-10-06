@@ -513,8 +513,19 @@ function renderCPM(bundle, life) {
     ? `Valor fijo asignado a la sarta "${sartaSeleccionada}"`
     : 'Precio unitario / metro garantizado';
 
+  // El CPM real es un promedio ponderado (USD / metros) de las piezas dadas de
+  // baja DENTRO del periodo filtrado; en rangos amplios converge al histórico y
+  // parece fijo. Mostrar sobre cuántas piezas se calcula y la diferencia contra
+  // el histórico hace visible que la ficha sí responde al filtro.
+  const gHist = cpmGlobal(bundle, bundle.life);
+  const hayFiltroPeriodo = filters.months.length || filters.dateFrom || filters.dateTo;
+  let cpmRealSub = `${fmtNum(g.nConUsd)} piezas dadas de baja en el periodo · ${fmtNum(Math.round(g.metrosReales))} m`;
+  if (hayFiltroPeriodo && g.cpmReal !== null && gHist.cpmReal !== null) {
+    const diff = (g.cpmReal / gHist.cpmReal - 1) * 100;
+    cpmRealSub += ` · ${diff >= 0 ? '+' : ''}${diff.toFixed(1)}% vs. histórico (USD ${gHist.cpmReal.toFixed(3)})`;
+  }
   const cards = [
-    { label: 'CPM real', value: (g.cpmReal !== null ? 'USD ' + g.cpmReal.toFixed(3) : '—') + ' <small>/m</small>', sub: 'Precio unitario / metros realmente logrados' },
+    { label: 'CPM real', value: (g.cpmReal !== null ? 'USD ' + g.cpmReal.toFixed(3) : '—') + ' <small>/m</small>', sub: cpmRealSub },
     { label: 'CPM ideal', value: (cpmIdealFicha !== null ? 'USD ' + cpmIdealFicha.toFixed(3) : '—') + ' <small>/m</small>', sub: cpmIdealSub },
     { label: 'USD invertido', value: 'USD ' + fmtNum(Math.round(g.usdGastado)), sub: `${fmtNum(g.nConUsd)} piezas con precio registrado` },
     { label: 'Sobrecosto por bajo rendimiento', value: 'USD ' + fmtNum(Math.round(g.sobrecostoUSD)), sub: 'Piezas que no llegaron a su metro garantizado' },
@@ -1539,7 +1550,7 @@ function renderPerfTable() {
 // a Segovia por ahora.
 const MINAS_SEGOVIA = ['SANDRA K', 'EL SILENCIO', 'PROVIDENCIA'];
 const TIPOS_PERFORACION = ['AVANCE', 'ESCARIADO', 'SOSTENIMIENTO', 'ESCAREADORA'];
-let dailyReportState = { fecha: '', mina: '', equipo: '', tipo: '', operador: '', search: '', activeTools: [], bajaTools: [], bajaSelected: null };
+let dailyReportState = { fecha: '', mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null };
 const CAUSAS_DESCARTE = ['GEOLOGIA', 'DAÑO OPERACIONAL', 'CONDICION MECANICA', 'DESGASTE', 'SERVICIOS MINA', 'PARAMETROS DE PERFORACION', 'ROSCA INCRUSTADA', 'SIN ESPECIFICAR'];
 const MODOS_FALLA = ['ROTURA DEL CUERPO', 'ROTURA ROSCA T38', 'ROTURA ROSCA R32', 'ROTURA ROSCA R28', 'DESGASTE ROSCA T38', 'DESGASTE ROSCA R32', 'ROSCA INCRUSTADA', 'PERDIDA DE BOTON', 'ROTURA DE BOTON', 'PERDIDA EN TERRENO', 'OP/SIN ESPECIFICAR'];
 
@@ -1553,7 +1564,7 @@ async function enterDigitalizadorScreen() {
   document.getElementById('dailyReportUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
   document.getElementById('dailyReportHomeBtn').hidden = currentUser.role !== 'admin';
   const today = new Date().toISOString().slice(0, 10);
-  dailyReportState = { fecha: today, mina: '', equipo: '', tipo: '', operador: '', search: '', activeTools: [], bajaTools: [], bajaSelected: null };
+  dailyReportState = { fecha: today, mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null };
 
   const fechaInput = document.getElementById('drFecha');
   fechaInput.value = today;
@@ -1561,8 +1572,7 @@ async function enterDigitalizadorScreen() {
   document.getElementById('drMina').innerHTML = '<option value="">Selecciona…</option>' + MINAS_SEGOVIA.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
   document.getElementById('drTipo').innerHTML = '<option value="">Selecciona…</option>' + TIPOS_PERFORACION.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
   document.getElementById('drEquipo').innerHTML = '<option value="">Selecciona una mina primero</option>';
-  document.getElementById('drOperador').value = '';
-  document.getElementById('drSearch').value = '';
+  ['drOperador', 'drOperador2', 'drFrente', 'drReporteNo', 'drTurno', 'drJornada'].forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('drError').hidden = true;
   document.getElementById('drSuccess').hidden = true;
 
@@ -1577,7 +1587,7 @@ async function enterDigitalizadorScreen() {
   document.getElementById('bajaSuccess').hidden = true;
 
   wireDailyReportEvents();
-  renderDailyReportTable();
+  renderDrRows(true);
   await renderTodayReports();
 }
 
@@ -1600,28 +1610,28 @@ function wireDailyReportEvents() {
   const equipoSel = document.getElementById('drEquipo');
   if (!equipoSel.dataset.wired) {
     equipoSel.dataset.wired = '1';
-    equipoSel.addEventListener('change', (e) => { dailyReportState.equipo = e.target.value; renderDailyReportTable(); });
+    equipoSel.addEventListener('change', (e) => { dailyReportState.equipo = e.target.value; renderDrRows(true); });
   }
   const tipoSel = document.getElementById('drTipo');
   if (!tipoSel.dataset.wired) {
     tipoSel.dataset.wired = '1';
-    tipoSel.addEventListener('change', (e) => { dailyReportState.tipo = e.target.value; });
+    tipoSel.addEventListener('change', () => { drRerenderKeepingValues(); });
   }
-  const operadorInput = document.getElementById('drOperador');
-  if (!operadorInput.dataset.wired) {
-    operadorInput.dataset.wired = '1';
-    operadorInput.addEventListener('input', (e) => { dailyReportState.operador = e.target.value; });
+  const rowsBody = document.getElementById('drRowsBody');
+  if (!rowsBody.dataset.wired) {
+    rowsBody.dataset.wired = '1';
+    rowsBody.addEventListener('input', (e) => { if (e.target.closest('.dr-row')) updateDrTotals(); });
+    rowsBody.addEventListener('click', (e) => {
+      const btn = e.target.closest('.dr-row-remove');
+      if (!btn) return;
+      btn.closest('.dr-row').remove();
+      updateDrTotals();
+    });
   }
-  const searchInput = document.getElementById('drSearch');
-  if (!searchInput.dataset.wired) {
-    searchInput.dataset.wired = '1';
-    searchInput.addEventListener('input', (e) => { dailyReportState.search = e.target.value; renderDailyReportTable(); });
-  }
-  const tbody = document.getElementById('drTableBody');
-  if (!tbody.dataset.wired) {
-    tbody.dataset.wired = '1';
-    tbody.addEventListener('input', (e) => { if (e.target.classList.contains('dr-metros-input')) updateDrFillCount(); });
-  }
+  const addRowBtn = document.getElementById('drAddRowBtn');
+  if (!addRowBtn.dataset.wired) { addRowBtn.dataset.wired = '1'; addRowBtn.addEventListener('click', () => addDrRow(false)); }
+  const dupRowBtn = document.getElementById('drDupRowBtn');
+  if (!dupRowBtn.dataset.wired) { dupRowBtn.dataset.wired = '1'; dupRowBtn.addEventListener('click', () => addDrRow(true)); }
   const saveBtn = document.getElementById('drSaveBtn');
   if (!saveBtn.dataset.wired) { saveBtn.dataset.wired = '1'; saveBtn.addEventListener('click', saveDailyReport); }
 
@@ -1722,7 +1732,7 @@ async function handleConfirmBaja() {
     dailyReportState.bajaTools = dailyReportState.bajaTools.filter(r => r.codigo_marcado !== tool.codigo_marcado);
     if (dailyReportState.activeTools.some(r => r.codigo_marcado === tool.codigo_marcado)) {
       dailyReportState.activeTools = dailyReportState.activeTools.filter(r => r.codigo_marcado !== tool.codigo_marcado);
-      renderDailyReportTable();
+      drRerenderKeepingValues();
     }
     closeBajaForm();
     document.getElementById('bajaSearch').value = '';
@@ -1745,13 +1755,13 @@ async function onDailyMinaChange(mina) {
   if (!mina) {
     equipoSel.innerHTML = '<option value="">Selecciona una mina primero</option>';
     equipoSel.disabled = true;
-    renderDailyReportTable();
+    renderDrRows(true);
     await renderTodayReports();
     return;
   }
   equipoSel.innerHTML = '<option value="">Cargando…</option>';
   equipoSel.disabled = true;
-  renderDailyReportTable();
+  renderDrRows(true);
   const rows = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
   dailyReportState.activeTools = rows;
   const equipos = Array.from(new Set(rows.map(r => r.equipo).filter(Boolean))).sort();
@@ -1759,55 +1769,105 @@ async function onDailyMinaChange(mina) {
     ? '<option value="">Selecciona…</option>' + equipos.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('')
     : '<option value="">Sin herramientas activas en esta mina</option>';
   equipoSel.disabled = equipos.length === 0;
-  renderDailyReportTable();
+  renderDrRows(true);
   await renderTodayReports();
 }
 
-function renderDailyReportTable() {
-  const wrap = document.getElementById('drTableWrap');
-  const emptyNote = document.getElementById('drEmptyNote');
-  const actionsBar = document.getElementById('drActionsBar');
-  const { mina, equipo, search } = dailyReportState;
-
-  if (!mina || !equipo) {
-    wrap.hidden = true; actionsBar.hidden = true; emptyNote.hidden = false;
-    if (!mina) {
-      emptyNote.textContent = 'Selecciona una mina para ver sus herramientas activas.';
-    } else if (mina && dailyReportState.activeTools.length === 0) {
-      emptyNote.textContent = `${mina} no tiene herramientas activas registradas — pide al supervisor que registre los códigos antes de reportar.`;
-    } else {
-      emptyNote.textContent = 'Selecciona un equipo para ver sus herramientas activas.';
-    }
-    return;
-  }
-  let rows = dailyReportState.activeTools.filter(r => r.equipo === equipo);
-  if (search) {
-    const q = search.toLowerCase();
-    rows = rows.filter(r => [r.codigo_marcado, r.ref_code, r.herramienta].some(v => String(v || '').toLowerCase().includes(q)));
-  }
-  rows = rows.slice().sort((a, b) => (a.herramienta || '').localeCompare(b.herramienta || ''));
-
-  if (!rows.length) {
-    wrap.hidden = true; actionsBar.hidden = true; emptyNote.hidden = false;
-    emptyNote.textContent = 'Ninguna herramienta activa de este equipo coincide con la búsqueda.';
-    return;
-  }
-  emptyNote.hidden = true; wrap.hidden = false; actionsBar.hidden = false;
-
-  document.getElementById('drTableBody').innerHTML = rows.map(r => `<tr>
-    <td>${esc(r.ref_code || '—')}</td><td>${esc(r.herramienta || '—')}</td><td>${esc(r.codigo_marcado)}</td>
-    <td class="num">${fmtNum(r.metros_perforados || 0)}</td>
-    <td class="num">${r.metro_garantizado != null ? fmtNum(r.metro_garantizado) : '—'}</td>
-    <td class="num"><input type="number" class="metros-input dr-metros-input" min="0" step="0.01" data-codigo="${esc(r.codigo_marcado)}" placeholder="—"></td>
-  </tr>`).join('');
-  updateDrFillCount();
+// Las 4 columnas de herramientas del registro en papel. Las "sugeridas" de cada
+// columna se deducen del texto de la descripción (la tabla piezas no guarda
+// categoría); las demás herramientas del equipo siguen disponibles en "Otras".
+const DR_SLOTS_PERFORACION = [
+  { label: 'Shank', re: /SHANK/i },
+  { label: 'Acople', re: /ACOPLE|COUPLING/i },
+  { label: 'Barrena', re: /BARRA|BARRENA|ROD\b/i },
+  { label: 'Broca', re: /BROCA|\bBIT\b|REAMING/i },
+];
+const DR_SLOTS_SOSTENIMIENTO = [
+  { label: 'Shank', re: /SHANK/i },
+  { label: 'Acople / Adaptador', re: /ACOPLE|ADAPTADOR/i },
+  { label: 'Extensión', re: /EXTENSI/i },
+  { label: 'Punzón', re: /PUNZ/i },
+];
+function drSlots() {
+  return document.getElementById('drTipo').value === 'SOSTENIMIENTO' ? DR_SLOTS_SOSTENIMIENTO : DR_SLOTS_PERFORACION;
 }
-
-function updateDrFillCount() {
-  const inputs = Array.from(document.querySelectorAll('.dr-metros-input'));
-  const filled = inputs.filter(i => i.value !== '' && Number(i.value) > 0);
-  document.getElementById('drFillCount').textContent = filled.length === 1 ? '1 herramienta con metros cargados' : `${filled.length} herramientas con metros cargados`;
-  document.getElementById('drSaveBtn').disabled = filled.length === 0;
+function drEquipoTools() {
+  return dailyReportState.activeTools
+    .filter(t => t.equipo === dailyReportState.equipo)
+    .sort((a, b) => String(a.codigo_marcado).localeCompare(String(b.codigo_marcado), 'es', { numeric: true }));
+}
+function drSlotOptions(slot, tools, selected) {
+  const opt = (t) => `<option value="${esc(t.codigo_marcado)}" ${t.codigo_marcado === selected ? 'selected' : ''}>${esc(t.codigo_marcado)} · ${esc(t.herramienta || t.ref_code || '')} (${fmtNum(t.metros_perforados || 0)}${t.metro_garantizado ? '/' + fmtNum(t.metro_garantizado) : ''} m)</option>`;
+  const sug = tools.filter(t => slot.re.test(t.herramienta || ''));
+  const otras = tools.filter(t => !slot.re.test(t.herramienta || ''));
+  let h = '<option value="">—</option>';
+  if (sug.length) h += `<optgroup label="Sugeridas">${sug.map(opt).join('')}</optgroup>`;
+  if (otras.length) h += `<optgroup label="Otras del equipo">${otras.map(opt).join('')}</optgroup>`;
+  return h;
+}
+function drRowHtml(vals) {
+  const tools = drEquipoTools();
+  const selects = drSlots().map((s, i) => `<div class="filter-group"><label>${esc(s.label)}</label><select class="dr-slot" data-slot="${i}">${drSlotOptions(s, tools, (vals.tools || [])[i])}</select></div>`).join('');
+  return `<div class="dr-row">${selects}
+    <div class="filter-group"><label>Barrenos</label><input type="number" class="dr-barrenos" min="0" step="1" inputmode="numeric" value="${vals.barrenos ?? ''}"></div>
+    <div class="filter-group"><label>Longitud (m)</label><input type="number" class="dr-longitud" min="0" step="0.01" inputmode="decimal" value="${vals.longitud ?? ''}"></div>
+    <div class="dr-metros-out"><span class="dr-metros-label">Metros</span><span class="dr-metros-val">0</span></div>
+    <button type="button" class="small ghost danger dr-row-remove">Quitar</button>
+  </div>`;
+}
+function drReadRows() {
+  return Array.from(document.querySelectorAll('#drRowsBody .dr-row')).map(row => ({
+    tools: Array.from(row.querySelectorAll('.dr-slot')).map(s => s.value),
+    barrenos: row.querySelector('.dr-barrenos').value === '' ? null : Number(row.querySelector('.dr-barrenos').value),
+    longitud: row.querySelector('.dr-longitud').value === '' ? null : Number(row.querySelector('.dr-longitud').value),
+  }));
+}
+function drMetros(r) {
+  return (r.barrenos > 0 && r.longitud > 0) ? Math.round(r.barrenos * r.longitud * 1000) / 1000 : 0;
+}
+function renderDrRows(reset) {
+  const wrap = document.getElementById('drRowsWrap');
+  const note = document.getElementById('drEmptyNote');
+  const { mina, equipo } = dailyReportState;
+  if (!mina || !equipo) {
+    wrap.hidden = true; note.hidden = false;
+    note.textContent = !mina ? 'Selecciona una mina y un equipo para armar las filas del reporte.'
+      : (dailyReportState.activeTools.length === 0
+        ? `${mina} no tiene herramientas activas registradas — pide al supervisor que registre los códigos antes de reportar.`
+        : 'Selecciona un equipo para armar las filas del reporte.');
+    return;
+  }
+  note.hidden = true; wrap.hidden = false;
+  if (reset) document.getElementById('drRowsBody').innerHTML = drRowHtml({});
+  updateDrTotals();
+}
+function drRerenderKeepingValues() {
+  if (!dailyReportState.mina || !dailyReportState.equipo) return;
+  const rows = drReadRows();
+  document.getElementById('drRowsBody').innerHTML = (rows.length ? rows : [{}]).map(drRowHtml).join('');
+  updateDrTotals();
+}
+function addDrRow(copyLast) {
+  const body = document.getElementById('drRowsBody');
+  const rows = drReadRows();
+  const last = rows[rows.length - 1];
+  const vals = (copyLast && last) ? { tools: last.tools, longitud: last.longitud, barrenos: null } : { longitud: last ? last.longitud : null };
+  body.insertAdjacentHTML('beforeend', drRowHtml(vals));
+  const newRow = body.lastElementChild;
+  const focusEl = copyLast ? newRow.querySelector('.dr-slot[data-slot="3"]') : newRow.querySelector('.dr-slot[data-slot="0"]');
+  if (focusEl) focusEl.focus();
+  updateDrTotals();
+}
+function updateDrTotals() {
+  let total = 0, n = 0;
+  document.querySelectorAll('#drRowsBody .dr-row').forEach((row, i) => {
+    const r = drReadRows()[i];
+    const m = drMetros(r);
+    row.querySelector('.dr-metros-val').textContent = fmtNum(m, 2);
+    if (m > 0) { total += m; n++; }
+  });
+  document.getElementById('drTotalMetros').textContent = `${fmtNum(total, 2)} m en ${n} fila${n === 1 ? '' : 's'}`;
+  document.getElementById('drSaveBtn').disabled = total <= 0;
 }
 
 function showDrError(msg) {
@@ -1815,45 +1875,59 @@ function showDrError(msg) {
   const el = document.getElementById('drError');
   el.hidden = false; el.textContent = msg;
 }
+function drNewGroupId() {
+  return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
 
 async function saveDailyReport() {
-  const { fecha, mina, equipo, tipo, operador } = dailyReportState;
   document.getElementById('drError').hidden = true;
   document.getElementById('drSuccess').hidden = true;
-
+  const v = (id) => document.getElementById(id).value.trim();
+  const fecha = v('drFecha'), tipo = v('drTipo'), operador = v('drOperador');
+  const { mina, equipo } = dailyReportState;
   if (!fecha || !mina || !equipo || !tipo) { showDrError('Completa la fecha, la mina, el equipo y el tipo de perforación.'); return; }
-  if (!operador || !operador.trim()) { showDrError('Escribe el nombre del operador.'); return; }
-  const inputs = Array.from(document.querySelectorAll('.dr-metros-input')).filter(i => i.value !== '' && Number(i.value) > 0);
-  if (!inputs.length) { showDrError('Ingresa los metros de al menos una herramienta.'); return; }
+  if (!operador) { showDrError('Escribe el nombre del Operador 1.'); return; }
+
+  const byCodigo = new Map(dailyReportState.activeTools.map(r => [r.codigo_marcado, r]));
+  const head = { fecha, mina, tipo, equipo, operador, operador2: v('drOperador2') || null, turno: v('drTurno') || null, jornada: v('drJornada') || null, reporte_no: v('drReporteNo') || null, frente: v('drFrente') || null };
+  const entries = [];
+  const rows = drReadRows();
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const tools = Array.from(new Set(r.tools.filter(Boolean)));
+    if (!tools.length && !(r.barrenos > 0) && !(r.longitud > 0)) continue; // fila vacía
+    if (!tools.length) { showDrError(`Fila ${i + 1}: elige al menos una herramienta.`); return; }
+    if (!(r.barrenos > 0) || !(r.longitud > 0)) { showDrError(`Fila ${i + 1}: escribe la cantidad de barrenos y la longitud.`); return; }
+    const grupo = drNewGroupId();
+    const metros = drMetros(r);
+    tools.forEach((cm, k) => {
+      const t = byCodigo.get(cm);
+      entries.push({ ...head, ref_code: t.ref_code, herramienta: t.herramienta, codigo_marcado: cm, metros, es_primario: k === 0, barrenos: r.barrenos, longitud: r.longitud, grupo_id: grupo });
+    });
+  }
+  if (!entries.length) { showDrError('Agrega al menos una fila con herramientas, barrenos y longitud.'); return; }
 
   const saveBtn = document.getElementById('drSaveBtn');
   saveBtn.disabled = true; saveBtn.textContent = 'Guardando…';
   try {
-    const byCodigo = new Map(dailyReportState.activeTools.map(r => [r.codigo_marcado, r]));
-    const entries = inputs.map(inp => {
-      const tool = byCodigo.get(inp.dataset.codigo);
-      return {
-        fecha, mina, tipo, equipo, ref_code: tool.ref_code, herramienta: tool.herramienta,
-        codigo_marcado: tool.codigo_marcado, metros: Number(inp.value), es_primario: false,
-        operador: operador.trim(),
-      };
-    });
     await CTAuth.insertRows('produccion', entries);
-    await reconcilePrimary(fecha, mina, equipo);
     for (const codigo of new Set(entries.map(e => e.codigo_marcado))) {
       await refreshPiezaMetros(codigo);
     }
-    const rows = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
-    dailyReportState.activeTools = rows;
-    renderDailyReportTable();
+    dailyReportState.activeTools = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
+    renderDrRows(true);
     await renderTodayReports();
+    const nFilas = new Set(entries.map(e => e.grupo_id)).size;
     const okEl = document.getElementById('drSuccess');
     okEl.hidden = false;
-    okEl.textContent = `Reporte guardado: ${entries.length} herramienta${entries.length === 1 ? '' : 's'} el ${fmtFechaLarga(fecha)}.`;
+    okEl.textContent = `Reporte guardado: ${nFilas} fila${nFilas === 1 ? '' : 's'} el ${fmtFechaLarga(fecha)}.`;
   } catch (e) {
-    showDrError('No se pudo guardar el reporte (' + e.message + ').');
+    showDrError(/column|schema cache|grupo_id/i.test(e.message || '')
+      ? 'Falta actualizar la base de datos para el nuevo formato de reporte. Pide al administrador que ejecute la migración "supabase_schema_reporte_filas.sql" en Supabase.'
+      : 'No se pudo guardar el reporte (' + e.message + ').');
   } finally {
-    saveBtn.disabled = false; saveBtn.textContent = 'Guardar reporte';
+    saveBtn.textContent = 'Guardar reporte';
+    updateDrTotals();
   }
 }
 
@@ -1868,33 +1942,44 @@ async function renderTodayReports() {
   }
   label.textContent = `${fmtFechaLarga(fecha)} — ${mina}`;
   const rows = await CTAuth.fetchMatch('produccion', { fecha, mina });
-  rows.sort((a, b) => (a.equipo || '').localeCompare(b.equipo || '') || (a.herramienta || '').localeCompare(b.herramienta || ''));
-  tbody.innerHTML = rows.length ? rows.map(r => `<tr>
-    <td>${esc(r.herramienta || '—')}</td><td>${esc(r.codigo_marcado)}</td><td>${esc(r.equipo || '—')}</td>
-    <td>${esc(r.tipo || '—')}</td><td>${esc(r.operador || '—')}</td>
-    <td class="num">${fmtNum(r.metros)}</td>
-    <td><button type="button" class="small ghost danger dr-delete-btn" data-id="${r.id}" data-codigo="${esc(r.codigo_marcado)}" data-mina="${esc(mina)}" data-equipo="${esc(r.equipo || '')}" data-fecha="${esc(fecha)}">Eliminar</button></td>
-  </tr>`).join('') : `<tr><td colspan="7" class="empty-note">Sin reportes para esta fecha y mina todavía.</td></tr>`;
+  const groups = new Map();
+  rows.forEach(r => {
+    const key = r.grupo_id || ('legacy-' + r.id);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  });
+  const list = Array.from(groups.entries()).map(([key, rs]) => ({ key, rs, first: rs[0] }));
+  list.sort((a, b) => (a.first.equipo || '').localeCompare(b.first.equipo || '') || (a.first.id - b.first.id));
+  tbody.innerHTML = list.length ? list.map(({ rs, first }) => {
+    const codigos = rs.map(r => r.codigo_marcado);
+    const turno = [first.turno ? 'T' + first.turno : null, first.jornada ? (first.jornada === 'DIA' ? 'Día' : 'Noche') : null].filter(Boolean).join(' · ');
+    const bxl = (first.barrenos != null && first.longitud != null) ? `${fmtNum(first.barrenos)} × ${fmtNum(first.longitud, 2)}` : '—';
+    return `<tr>
+      <td>${esc(first.equipo || '—')}</td><td>${esc(turno || '—')}</td><td>${esc(first.operador || '—')}</td>
+      <td>${codigos.map(c => `<span class="pill ok" style="margin-right:4px;">${esc(c)}</span>`).join('')}</td>
+      <td class="num">${bxl}</td><td class="num">${fmtNum(first.metros, 2)}</td>
+      <td><button type="button" class="small ghost danger dr-delete-btn" data-grupo="${esc(first.grupo_id || '')}" data-id="${first.id}" data-codigos="${esc(codigos.join('|'))}" data-mina="${esc(mina)}" data-equipo="${esc(first.equipo || '')}" data-fecha="${esc(fecha)}">Eliminar</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="7" class="empty-note">Sin reportes para esta fecha y mina todavía.</td></tr>`;
 }
 
 async function handleDeleteDailyReport(e) {
   const btn = e.target.closest('.dr-delete-btn');
   if (!btn) return;
-  if (!confirm('¿Eliminar este reporte? El acumulado de metros de la herramienta se recalculará.')) return;
+  if (!confirm('¿Eliminar esta fila del reporte? El acumulado de metros de sus herramientas se recalculará.')) return;
   btn.disabled = true;
   try {
-    const id = Number(btn.dataset.id);
-    await CTAuth.deleteMatch('produccion', { id });
-    await refreshPiezaMetros(btn.dataset.codigo);
-    await reconcilePrimary(btn.dataset.fecha, btn.dataset.mina, btn.dataset.equipo);
+    if (btn.dataset.grupo) await CTAuth.deleteMatch('produccion', { grupo_id: btn.dataset.grupo });
+    else await CTAuth.deleteMatch('produccion', { id: Number(btn.dataset.id) });
+    for (const cm of btn.dataset.codigos.split('|')) await refreshPiezaMetros(cm);
+    if (!btn.dataset.grupo) await reconcilePrimary(btn.dataset.fecha, btn.dataset.mina, btn.dataset.equipo);
     if (dailyReportState.mina === btn.dataset.mina) {
-      const rows = await CTAuth.fetchMatch('piezas', { mina: dailyReportState.mina, estado: 'ACTIVO' });
-      dailyReportState.activeTools = rows;
-      renderDailyReportTable();
+      dailyReportState.activeTools = await CTAuth.fetchMatch('piezas', { mina: dailyReportState.mina, estado: 'ACTIVO' });
+      drRerenderKeepingValues();
     }
     await renderTodayReports();
   } catch (err) {
-    alert('No se pudo eliminar el reporte (' + err.message + ').');
+    alert('No se pudo eliminar la fila (' + err.message + ').');
   } finally {
     btn.disabled = false;
   }
