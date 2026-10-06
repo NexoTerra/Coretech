@@ -24,6 +24,26 @@ function findSheet(workbook, aliases) {
 }
 function sheetToRows(workbook, sheetName) {
   const ws = workbook.Sheets[sheetName];
+  // Un libro puede declarar una hoja enorme (p.ej. hasta la columna XEY, ~16.000
+  // columnas) solo por celdas vacías con formato a la derecha; sheet_to_json
+  // armaría cientos de millones de celdas y congelaría el navegador. Solo en ese
+  // caso se acota el rango a las celdas con contenido real.
+  if (ws['!ref']) {
+    const full = XLSX.utils.decode_range(ws['!ref']);
+    if ((full.e.c - full.s.c + 1) * (full.e.r - full.s.r + 1) > 2000000) {
+      let maxC = full.s.c, maxR = full.s.r;
+      for (const k in ws) {
+        if (k.charCodeAt(0) === 33) continue; // claves '!ref', '!cols', etc.
+        const cell = ws[k];
+        if (cell && cell.v !== undefined && cell.v !== null && cell.v !== '') {
+          const a = XLSX.utils.decode_cell(k);
+          if (a.c > maxC) maxC = a.c;
+          if (a.r > maxR) maxR = a.r;
+        }
+      }
+      ws['!ref'] = XLSX.utils.encode_range({ s: full.s, e: { c: maxC, r: maxR } });
+    }
+  }
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
   if (!rows.length) return { headers: [], data: [] };
   const headers = rows[0].map(normHeader);
