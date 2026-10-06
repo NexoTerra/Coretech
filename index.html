@@ -468,8 +468,8 @@ footer b{color:var(--text-dim);}
       <b>Administrador</b> (todo, incluida esta pantalla), <b>Visualizador</b> (el panel completo de una o
       varias minas, según lo que le marques), <b>Supervisor</b> (solo metraje y rendimiento, sin costos, de
       las 3 minas), <b>Digitalizador</b> (carga los reportes diarios de las 3 minas), o <b>Técnico</b> (solo
-      metraje y rendimiento, sin costos, acotado a una única mina). Elige a qué minas puede entrar cada
-      Visualizador o Técnico — Administrador, Supervisor y Digitalizador siempre ven todas.
+      metraje y rendimiento, sin costos, solo de la mina que le asignes: Sandra K, El Silencio o Providencia). Marca a qué puede
+      entrar cada Visualizador o Técnico — Administrador, Supervisor y Digitalizador siempre ven todas las minas.
     </p>
     <div id="userList" class="user-list"></div>
     <div class="import-status" id="userAddStatus" style="display:none;"></div>
@@ -477,8 +477,8 @@ footer b{color:var(--text-dim);}
 </div>
 
 <!-- Panel restringido de solo lectura: metraje y rendimiento por pieza, sin
-     precios ni CPM. Lo usan Supervisor (las 3 minas juntas) y Técnico (una
-     sola mina, la que le asignó el administrador). -->
+     precios ni CPM. Lo usan Supervisor (las 3 minas juntas) y Técnico (solo
+     la mina que le asignó el administrador). -->
 <div id="perfScreen">
   <div class="screen-header">
     <div>
@@ -3335,6 +3335,8 @@ const MONTH_ABBR = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT',
 const MINES = [
   { slug: 'segovia', label: 'Aris Mining Segovia', sub: 'Sandra K · El Silencio · Providencia', icon: '⛏️' },
 ];
+// 'SANDRA K' -> 'Sandra K' (los nombres de mina se guardan en mayúsculas)
+function tituloMina(n) { return String(n).toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase()); }
 const ROLE_LABELS = {
   admin: 'Administrador', viewer: 'Visualizador',
   supervisor: 'Supervisor', digitalizador: 'Digitalizador', tecnico: 'Técnico',
@@ -4370,12 +4372,16 @@ async function renderUserMgmt() {
   profiles.forEach(p => {
     const isSelf = currentUser && p.id === currentUser.id;
     // Admin, Supervisor y Digitalizador siempre ven las 3 minas (ver
-    // canSeeMine) — las casillas de mina solo aplican a Visualizador y
-    // Técnico, que sí quedan acotados a las minas marcadas.
+    // canSeeMine) — las casillas solo aplican a Visualizador (acceso al
+    // tablero de Segovia) y Técnico (acotado a las minas de Segovia que se
+    // marquen: Sandra K, El Silencio, Providencia).
     const sinMinasEspecificas = p.role === 'admin' || p.role === 'supervisor' || p.role === 'digitalizador';
+    const opcionesMina = p.role === 'tecnico'
+      ? MINAS_SEGOVIA.map(n => ({ value: n, label: tituloMina(n) }))
+      : MINES.map(m => ({ value: m.slug, label: m.label.replace('Aris Mining ', '') }));
     const minesHtml = sinMinasEspecificas
       ? '<span class="mine-checks"><span class="admin-note">ve todas las minas</span></span>'
-      : `<span class="mine-checks">${MINES.map(m => `<label><input type="checkbox" data-mine="${esc(m.slug)}" ${(p.allowed_mines || []).includes(m.slug) ? 'checked' : ''}> ${esc(m.label.replace('Aris Mining ', ''))}</label>`).join('')}</span>`;
+      : `<span class="mine-checks">${opcionesMina.map(o => `<label><input type="checkbox" data-mine="${esc(o.value)}" ${(p.allowed_mines || []).map(String).map(x => x.toUpperCase()).includes(o.value.toUpperCase()) ? 'checked' : ''}> ${esc(o.label)}</label>`).join('')}</span>`;
     const roleOptions = ['viewer', 'admin', 'supervisor', 'digitalizador', 'tecnico']
       .map(r => `<option value="${r}" ${p.role === r ? 'selected' : ''}>${esc(ROLE_LABELS[r])}</option>`).join('');
     const row = el(`<div class="user-row">
@@ -4389,6 +4395,15 @@ async function renderUserMgmt() {
     select.addEventListener('change', async () => {
       try {
         await CTAuth.updateProfileRole(p.id, select.value);
+        // Para Técnico el acceso son las minas de Segovia (Sandra K…); para los
+        // demás es "segovia". Al cruzar esa frontera el acceso anterior ya no
+        // significa lo mismo, así que se reinicia: Técnico queda sin mina hasta
+        // que se le asigne una; Visualizador vuelve a tener Segovia.
+        if ((p.role === 'tecnico') !== (select.value === 'tecnico')) {
+          const reiniciado = select.value === 'viewer' ? ['segovia'] : [];
+          await CTAuth.updateProfileMines(p.id, reiniciado);
+          if (isSelf) currentUser.allowed_mines = reiniciado;
+        }
         status.textContent = `Rol de ${p.email} actualizado a ${ROLE_LABELS[select.value] || select.value}.`;
         status.className = 'import-status ok'; status.style.display = 'block';
         if (isSelf) { currentUser.role = select.value; updateAuthUI(); }
@@ -4537,7 +4552,7 @@ async function enterHub(user) {
 }
 
 // ============ panel de rendimiento (Supervisor / Técnico) ============
-let perfState = { search: '', mina: '', page: 1, allRows: [], selected: new Set() };
+let perfState = { search: '', mina: '', page: 1, allRows: [], selected: new Set(), sinMina: false };
 const PERF_PAGE_SIZE = 20;
 
 async function loadBundleForPerf(slug) {
@@ -4556,19 +4571,24 @@ async function enterPerfScreen() {
   document.getElementById('perfLegend').hidden = false;
   document.getElementById('perfSelectionBar').hidden = false;
   const isSupervisor = perfSeesAllMines();
-  const minesToLoad = isSupervisor ? MINES : MINES.filter(m => (currentUser.allowed_mines || []).includes(m.slug));
+  // El Técnico solo ve las minas de Segovia (Sandra K, El Silencio,
+  // Providencia) que el administrador le asignó en Gestión de usuarios.
+  const minasTecnico = isSupervisor ? null
+    : (currentUser.allowed_mines || []).map(m => String(m).toUpperCase()).filter(m => MINAS_SEGOVIA.includes(m));
+  perfState.sinMina = !!minasTecnico && !minasTecnico.length;
   document.getElementById('perfSubtitle').textContent = isSupervisor
     ? 'Metraje y rendimiento por pieza — las 3 minas, sin costos'
-    : `Metraje y rendimiento por pieza — ${minesToLoad.map(m => m.label).join(', ') || 'sin mina asignada'}`;
+    : `Metraje y rendimiento por pieza — ${minasTecnico.map(tituloMina).join(', ') || 'sin mina asignada'}`;
   document.getElementById('perfMinaFilterGroup').hidden = !isSupervisor;
   document.getElementById('perfGoToolsBtn').hidden = !isSupervisor;
   document.getElementById('perfGoReportsBtn').hidden = !isSupervisor;
   document.getElementById('perfHomeBtn').hidden = currentUser.role !== 'admin';
 
   const allRows = [];
-  for (const m of minesToLoad) {
+  for (const m of MINES) {
     const bundle = await loadBundleForPerf(m.slug);
-    allRows.push(...panelRendimientoPiezas(bundle, bundle.life, bundle.prod));
+    const rows = panelRendimientoPiezas(bundle, bundle.life, bundle.prod);
+    allRows.push(...(minasTecnico ? rows.filter(r => minasTecnico.includes(String(r.mina).toUpperCase())) : rows));
   }
   perfState.allRows = allRows;
   perfState.page = 1;
@@ -4834,7 +4854,7 @@ function renderPerfTable() {
   </tr>`).join('');
 
   document.getElementById('perfTableHead').innerHTML = thead;
-  document.getElementById('perfTableBody').innerHTML = tbody || `<tr><td colspan="${showMina ? 9 : 8}" class="empty-note">Sin resultados.</td></tr>`;
+  document.getElementById('perfTableBody').innerHTML = tbody || `<tr><td colspan="${showMina ? 9 : 8}" class="empty-note">${perfState.sinMina ? 'No tienes una mina asignada todavía. Pide a un administrador que te la asigne.' : 'Sin resultados.'}</td></tr>`;
   document.getElementById('perfPagination').innerHTML = `
     <button class="small" id="perfPgPrev" ${perfState.page <= 1 ? 'disabled' : ''}>← Anterior</button>
     <span>Página ${perfState.page} de ${totalPages} · ${fmtNum(total)} filas</span>
