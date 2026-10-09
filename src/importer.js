@@ -98,6 +98,7 @@ function cleanMina(v) {
   let s = normUpper(v);
   if (!s) return null;
   if (s === 'PROVIDENCA') s = 'PROVIDENCIA';
+  if (s === 'SANDRAK') s = 'SANDRA K';
   return /^[A-ZÁÉÍÓÚÑ. ]{3,}$/.test(s) ? s : null;
 }
 // A failed XLOOKUP in the source workbook can leave a literal 0 in REFERENCIA
