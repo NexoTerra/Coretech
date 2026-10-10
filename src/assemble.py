@@ -27,6 +27,7 @@ charts_js = read('charts.js')
 supabase_js = read('supabase.min.js')
 auth_js = read('auth.js')
 ui_js = read('ui.js')
+export_js = read('exportar.js')
 
 html = template
 html = html.replace('__CSS__', css)
@@ -39,6 +40,7 @@ html = html.replace('__DATASTORE_JS__', safe_script(datastore_js))
 html = html.replace('__CHARTS_JS__', safe_script(charts_js))
 html = html.replace('__SUPABASE_JS__', safe_script(supabase_js))
 html = html.replace('__AUTH_JS__', safe_script(auth_js))
+html = html.replace('__EXPORT_JS__', safe_script(export_js))
 html = html.replace('__UI_JS__', safe_script(ui_js))
 
 out_path = os.path.join(SCRATCH, 'CoreTech_Dashboard_Segovia.html')

@@ -163,6 +163,7 @@ __CSS__
     <p class="empty-note" id="drEmptyNote">Selecciona una mina y un equipo para armar las filas del reporte.</p>
     <div id="drRowsWrap" hidden>
       <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar todas las herramientas del equipo en cada casilla (por si una está mal clasificada)</span></label>
+      <p class="chart-sub" id="drPrefillNote" hidden></p>
       <div id="drRowsBody"></div>
       <div class="perf-selection-bar">
         <button class="small" id="drAddRowBtn" type="button" title="La fila nueva trae las mismas herramientas y longitud de la anterior: cambia solo la que cambió (por ejemplo la broca) y escribe los barrenos">+ Agregar fila (con las herramientas de la anterior)</button>
@@ -607,6 +608,8 @@ __CSS__
     </div>
     <div class="filter-actions">
       <button id="clearFilters" type="button">Limpiar filtros</button>
+      <button id="exportXlsxBtn" type="button" title="Descarga un Excel con los datos y el resumen de los filtros aplicados">⬇ Exportar Excel</button>
+      <button id="exportPdfBtn" type="button" title="Genera un informe PDF con los filtros aplicados">⬇ Informe PDF</button>
     </div>
   </section>
 
@@ -837,6 +840,7 @@ __CSS__
 <script>__CHARTS_JS__</script>
 <script>__SUPABASE_JS__</script>
 <script>__AUTH_JS__</script>
+<script>__EXPORT_JS__</script>
 <script>__UI_JS__</script>
 </body>
 </html>

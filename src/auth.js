@@ -148,6 +148,15 @@ async function fetchMatch(name, match) {
   return data || [];
 }
 
+// Las últimas filas de una tabla que cumplen `match`, de la más reciente a la más antigua (por fecha y luego id).
+async function fetchLast(name, match, limit) {
+  let q = client.from(name).select('*');
+  Object.entries(match).forEach(([col, val]) => { q = q.eq(col, val); });
+  const { data, error } = await q.order('fecha', { ascending: false }).order('id', { ascending: false }).limit(limit || 1);
+  if (error) throw error;
+  return data || [];
+}
+
 // Inserta filas nuevas sin tocar lo que ya existe (a diferencia de
 // replaceTable, que borra la tabla completa primero) — para cargas
 // incrementales como el reporte diario del Digitalizador.
@@ -197,7 +206,7 @@ window.CTAuth = {
   listProfiles, updateProfileRole, updateProfileMines, removeProfile,
   loadConciliacionRemote, setConciliacion,
   fetchTable, replaceTable, getDatasetMeta, setDatasetMeta,
-  fetchMatch, insertRows, updateMatch, deleteMatch,
+  fetchMatch, fetchLast, insertRows, updateMatch, deleteMatch,
   pendingAuthType: PENDING_AUTH_TYPE,
   cameFromAuthLink: CAME_FROM_AUTH_LINK,
   onAuthStateChange: (cb) => client.auth.onAuthStateChange(cb),

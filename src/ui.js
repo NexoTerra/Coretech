@@ -694,6 +694,182 @@ function renderMotivo(motivo) {
   });
 }
 
+// ============ exportar (Excel / PDF) con los filtros activos ============
+function filtrosTexto() {
+  const f = filters;
+  const lista = (a, max) => a && a.length ? (a.length > (max || 6) ? a.slice(0, max || 6).join(', ') + ` (+${a.length - (max || 6)} más)` : a.join(', ')) : null;
+  let periodo = 'Todo el historial';
+  if (f.months && f.months.length) periodo = lista(f.months.map(ymLabel), 12);
+  else if (f.dateFrom || f.dateTo) periodo = `${f.dateFrom ? fmtFechaLarga(f.dateFrom) : 'el inicio'} a ${f.dateTo ? fmtFechaLarga(f.dateTo) : 'la fecha más reciente'}`;
+  return [
+    ['Mina', lista(f.mina) || 'Todas'], ['Periodo', periodo], ['Equipo', lista(f.equipo) || 'Todos'], ['Estado de la pieza', lista(f.estado) || 'Todos'],
+    ['Operador', lista(f.operador) || 'Todos'], ['Referencia', lista(f.ref) || 'Todas'], ['Tipo de perforación', lista(f.tipo) || 'Todos'],
+  ];
+}
+
+function filasPorMina(prod, life) {
+  const d = BUNDLE.dict, m = new Map();
+  const get = (name) => { if (!m.has(name)) m.set(name, { mina: name, metros: 0, piezas: 0, activas: 0, bajas: 0, ratios: [] }); return m.get(name); };
+  prod.forEach(p => { if (p[8] === 0) return; get(d.mina[p[1]] || '(sin mina)').metros += p[7]; });
+  life.forEach(l => {
+    const e = get(d.mina[l[9]] || '(sin mina)'), est = d.estado[l[5]];
+    e.piezas++;
+    if (est === 'ACTIVO') e.activas++;
+    if (est === 'INACTIVO') { e.bajas++; if (l[4] && l[3] > 0) e.ratios.push(l[3] / l[4]); }
+  });
+  return Array.from(m.values()).map(e => ({
+    mina: e.mina, metros: e.metros, piezas: e.piezas, activas: e.activas, bajas: e.bajas,
+    cumplimiento: e.ratios.length ? e.ratios.reduce((a, b) => a + b, 0) / e.ratios.length * 100 : null,
+    pctSupera: e.ratios.length ? e.ratios.filter(r => r >= 1).length / e.ratios.length * 100 : null,
+  })).sort((a, b) => b.metros - a.metros);
+}
+const COLS_MINA = [
+  { key: 'mina', label: 'Mina' }, { key: 'metros', label: 'Metros perforados', f: 'int' }, { key: 'piezas', label: 'Piezas' },
+  { key: 'activas', label: 'Piezas activas' }, { key: 'bajas', label: 'Piezas dadas de baja' },
+  { key: 'cumplimiento', label: 'Cumplimiento medio (%)', f: 'd1' }, { key: 'pctSupera', label: '% que supera la garantía', f: 'd1' },
+];
+
+function exportContext() {
+  const { prod, life } = applyFilters(BUNDLE, filters);
+  const kpis = kpiTotals(BUNDLE, prod, life), vida = vidaUtilGlobal(BUNDLE, life), cpm = cpmGlobal(BUNDLE, life);
+  const lastMonth = kpis.months.length ? kpis.months[kpis.months.length - 1] : null;
+  const indicadores = [
+    ['Metros perforados', kpis.totalMetros, 'm', 'int'],
+    ['Promedio mensual (meses completos)', kpis.promedioCompletos || kpis.promedioTodos, 'm/mes', 'int'],
+    ['Códigos activos en el último mes', lastMonth ? kpis.toolsByMonth.get(lastMonth).size : 0, lastMonth ? ymLabel(lastMonth) : '', 'int'],
+    ['Referencias activas', kpis.referenciasActivas, '', 'int'],
+    ['Piezas trazadas', kpis.piezasActivas, '', 'int'],
+    ['Cumplimiento global', kpis.cumplimientoGlobal, `% · ${fmtNum(kpis.nCiclosCerrados)} piezas con ciclo cerrado`, 'd1'],
+    ['Vida útil promedio', vida.mediaDias, vida.n ? `días · mediana ${fmtNum(Math.round(vida.medianaDias))} · ${fmtNum(vida.n)} piezas` : 'días', 'int'],
+  ];
+  if (!presentationMode) {
+    indicadores.push(['CPM real', cpm.cpmReal, 'USD/m', 'd3'], ['CPM ideal', cpm.cpmIdeal, 'USD/m', 'd3'],
+      ['USD invertido en piezas dadas de baja', cpm.usdGastado, 'USD', 'int'], ['Sobrecosto por bajo rendimiento', cpm.sobrecostoUSD, 'USD', 'int'],
+      ['Oportunidad recuperable', kpis.recuperableM, `m ≈ USD ${fmtNum(Math.round(kpis.recuperableUSD))}`, 'int']);
+  }
+  const herr = buildHerramientaRows(prod, life).sort((a, b) => b.metros - a.metros);
+  return { prod, life, kpis, vida, cpm, indicadores, herr, minas: filasPorMina(prod, life), cpmRows: presentationMode ? [] : buildCPMRows(life) };
+}
+function nombreArchivoExport(ext) {
+  const f = filters, mina = f.mina && f.mina.length ? f.mina.join('-') : 'todas-las-minas';
+  const per = (f.months && f.months.length) ? f.months[0] + (f.months.length > 1 ? '_y_otros' : '') : ((f.dateFrom || 'inicio') + '_a_' + (f.dateTo || 'hoy'));
+  return `CoreTech_Rendimiento_${mina}_${per}.${ext}`.replace(/[^A-Za-z0-9_.\-ÁÉÍÓÚÑáéíóúñ]+/g, '_');
+}
+const r3 = (v) => Math.round(v * 1000) / 1000;
+function filaDeCols(cols, r, fmtMap) {
+  return cols.map(c => { const v = r[c.key]; return typeof v === 'number' ? { v: r3(v), f: (fmtMap && fmtMap[c.key]) || c.f || (Number.isInteger(v) ? 'int' : 'd1') } : v; });
+}
+function exportDashboardXlsx() {
+  const ctx = exportContext();
+  const ahora = new Date().toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' });
+  const resumen = [
+    [{ v: 'CORE TECH — Informe de rendimiento de aceros de perforación', f: 'title' }],
+    ['Aris Mining Segovia'],
+    ['Generado', ahora], ['Base de datos', BUNDLE.meta.source || ''], ['Usuario', currentUser ? currentUser.email : ''],
+    [],
+    [{ v: 'Filtros aplicados', f: 'bold' }],
+    ...filtrosTexto(),
+    [],
+    [{ v: 'Indicadores', f: 'bold' }],
+    ...ctx.indicadores.map(([etq, val, nota, f]) => [etq, val === null || val === undefined ? '—' : { v: r3(val), f }, nota]),
+    [],
+    ['Nota: las piezas activas se incluyen siempre; el filtro de fechas o meses se aplica a los reportes de producción y a la fecha de baja de las piezas inactivas.'],
+  ];
+  const tabla = (nombre, cols, filas, fmtMap) => ({ name: nombre, headerRows: 1, freezeRows: 1, rows: [cols.map(c => c.label), ...filas.map(r => filaDeCols(cols, r, fmtMap))] });
+  const hojas = [
+    { name: 'Resumen', rows: resumen, widths: [44, 22, 46] },
+    tabla('Por mina', COLS_MINA, ctx.minas),
+    tabla('Por herramienta', COLS_HERRAMIENTA, ctx.herr),
+    tabla('Por pieza', COLS_PIEZA.filter(c => c.key !== 'conciliado').concat([{ key: 'conciliado', label: 'Conciliado' }]), buildPiezaRows(ctx.life).sort((a, b) => b.metros - a.metros)),
+  ];
+  if (!presentationMode) hojas.push(tabla('CPM', COLS_CPM, ctx.cpmRows, { cpmReal: 'd3', cpmIdeal: 'd3', precio: 'int' }));
+  hojas.push({ name: 'Metros por mes', headerRows: 1, freezeRows: 1, rows: [['Mes', 'Metros perforados'], ...ctx.kpis.months.map(ym => [ymLabel(ym), { v: r3(ctx.kpis.byMonth.get(ym)), f: 'int' }])] });
+  CTExport.descargar(CTExport.xlsxBlob(hojas), nombreArchivoExport('xlsx'));
+}
+
+function exportDashboardPdf() {
+  const ctx = exportContext();
+  const logoImg = document.getElementById('logoImgLight');
+  const logoSrc = logoImg ? logoImg.src : '';
+  const fecha = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+  const partial = computePartialMonths(BUNDLE);
+  const meses = ctx.kpis.months.map(ym => ({ label: ymLabel(ym), value: ctx.kpis.byMonth.get(ym), partial: partial.has(ym) }));
+  const grafico = svgVBarChart(meses, { width: 700, color: '#0E7FA8', partialColor: '#C4C4C4' });
+  const celda = (c, r) => { const v = r[c.key]; if (v === null || v === undefined || v === '') return '<td class="num">—</td>'; return typeof v === 'number' ? `<td class="num">${c.fmt ? c.fmt(v) : fmtNum(v, Number.isInteger(v) ? 0 : 1)}</td>` : `<td>${esc(v)}</td>`; };
+  const tabla = (cols, rows) => `<table><thead><tr>${cols.map(c => `<th class="${c.num || c.f ? 'num' : ''}">${esc(c.label)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => celda(c, r)).join('')}</tr>`).join('')}</tbody></table>`;
+  const kpiHtml = ctx.indicadores.map(([etq, val, nota, f]) => `<div class="kpi"><div class="k-l">${esc(etq)}</div><div class="k-v">${val === null || val === undefined ? '—' : esc(fmtNum(val, f === 'd3' ? 3 : f === 'd1' ? 1 : 0))}</div><div class="k-s">${esc(nota)}</div></div>`).join('');
+  const colsMina = COLS_MINA.map(c => Object.assign({}, c, { fmt: c.f === 'd1' ? (v => fmtNum(v, 1)) : (c.f === 'int' ? (v => fmtNum(v)) : undefined) }));
+  const colsHerr = COLS_HERRAMIENTA.map(c => c.key === 'cumplimiento' || c.key === 'pctSupera' ? Object.assign({}, c, { fmt: v => fmtNum(v, 1) + ' %' }) : c);
+  const colsCpm = COLS_CPM.filter(c => !['vidaUtilDias', 'metrosPorDia'].includes(c.key));
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<title>CoreTech · Informe de rendimiento</title>
+<style>
+  :root{ --navy:#183058; --red:#D64545; --orange:#E8722C; --green:#1BAF7A; --blue:#0E7FA8; --border:#DFE4EC; --text:#16233C; --text-dim:#5B6579; --text-faint:#8A93A6; --gray3:#C4C4C4; --surface:#fff; --surface-2:#EEF1F6; }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:var(--text); margin:28px;}
+  header{display:flex; align-items:center; justify-content:space-between; gap:16px; border-bottom:2px solid var(--navy); padding-bottom:12px; margin-bottom:18px;}
+  header img{height:34px;}
+  h1{font-size:19px; color:var(--navy); margin:0;}
+  .meta{color:var(--text-dim); font-size:11.5px; margin:3px 0 0;}
+  h2{font-size:14px; color:var(--navy); margin:22px 0 6px;}
+  table{width:100%; border-collapse:collapse; font-size:11px; margin-top:6px;}
+  th,td{border-bottom:1px solid var(--border); padding:5px 7px; text-align:left;}
+  th{color:var(--text-dim); font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:.03em;}
+  td.num, th.num{text-align:right; font-variant-numeric:tabular-nums;}
+  table.filtros td:first-child{width:28%; color:var(--text-dim); font-weight:600;}
+  .kpis{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:6px;}
+  .kpi{border:1px solid var(--border); border-radius:8px; padding:8px 10px;}
+  .k-l{font-size:9.5px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.03em; font-weight:700;}
+  .k-v{font-size:19px; font-weight:700; color:var(--navy); margin:2px 0;}
+  .k-s{font-size:9.5px; color:var(--text-dim);}
+  svg{max-width:100%; height:auto;}
+  .bar-label{font-size:10.5px; fill:var(--text-dim);}
+  .bar-value{font-size:10.5px; font-weight:700; fill:var(--text);}
+  .badge-partial{font-size:9.5px; fill:var(--text-dim); font-weight:600;}
+  .nota{font-size:10px; color:var(--text-dim); margin-top:6px;}
+  footer{margin-top:24px; font-size:9.5px; color:var(--text-dim); border-top:1px solid var(--border); padding-top:8px;}
+  @media print{ body{margin:12mm;} h2{page-break-after:avoid;} tr,.kpi{page-break-inside:avoid;} }
+</style></head>
+<body>
+  <header>
+    ${logoSrc ? `<img src="${logoSrc}" alt="CORE TECH">` : '<div></div>'}
+    <div style="text-align:right;">
+      <h1>Informe de rendimiento de aceros de perforación</h1>
+      <p class="meta">Aris Mining Segovia · generado el ${esc(fecha)}${currentUser ? ' · ' + esc(currentUser.email || '') : ''}</p>
+    </div>
+  </header>
+  <h2>Filtros aplicados</h2>
+  <table class="filtros"><tbody>${filtrosTexto().map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+  <h2>Indicadores</h2>
+  <div class="kpis">${kpiHtml}</div>
+  <h2>Metros perforados por mes</h2>
+  ${grafico}
+  <h2>Resumen por mina</h2>
+  ${tabla(colsMina, ctx.minas)}
+  <h2>Rendimiento por herramienta (${ctx.herr.length} referencia${ctx.herr.length === 1 ? '' : 's'})</h2>
+  ${tabla(colsHerr, ctx.herr)}
+  ${presentationMode ? '' : `<h2>Costo por metro (CPM)</h2>${tabla(colsCpm, ctx.cpmRows)}`}
+  <p class="nota">Las piezas activas se incluyen siempre; el filtro de fechas o meses se aplica a los reportes de producción y a la fecha de baja de las piezas inactivas. El detalle pieza por pieza está en la exportación a Excel.</p>
+  <footer>CoreTech · Aris Mining Segovia — documento generado automáticamente desde el panel de rendimiento. Base de datos: ${esc(BUNDLE.meta.source || '')}.</footer>
+</body></html>`;
+
+  let frame = document.getElementById('dashPrintFrame');
+  if (!frame) {
+    frame = document.createElement('iframe');
+    frame.id = 'dashPrintFrame';
+    frame.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0;';
+    document.body.appendChild(frame);
+  }
+  frame.onload = () => {
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    catch (e) { /* si el navegador bloquea el print automático, el informe queda visible en el iframe */ }
+  };
+  const doc = frame.contentDocument || frame.contentWindow.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+}
+
 // ============ table ============
 function buildHerramientaRows(prod, life) {
   const prodByRef = byHerramientaProd(BUNDLE, prod, null);
@@ -1498,7 +1674,7 @@ function wireDailyReportEvents() {
   const equipoSel = document.getElementById('drEquipo');
   if (!equipoSel.dataset.wired) {
     equipoSel.dataset.wired = '1';
-    equipoSel.addEventListener('change', (e) => { dailyReportState.equipo = e.target.value; renderDrRows(true); });
+    equipoSel.addEventListener('change', (e) => { dailyReportState.equipo = e.target.value; renderDrRows(true); prefillFromLastReport(); });
   }
   const tipoSel = document.getElementById('drTipo');
   if (!tipoSel.dataset.wired) {
@@ -1766,7 +1942,7 @@ function renderDrRows(reset) {
     return;
   }
   note.hidden = true; wrap.hidden = false;
-  if (reset) document.getElementById('drRowsBody').innerHTML = drRowHtml({});
+  if (reset) { document.getElementById('drRowsBody').innerHTML = drRowHtml({}); document.getElementById('drPrefillNote').hidden = true; }
   updateDrTotals();
 }
 function drRerenderKeepingValues() {
@@ -1777,6 +1953,38 @@ function drRerenderKeepingValues() {
 }
 // La fila nueva parte de la anterior (mismas herramientas y longitud, sin barrenos): normalmente solo cambia
 // una herramienta (la broca cada 6 a 10 barrenos) y los barrenos.
+// La primera fila de un reporte parte del último reporte guardado del equipo (herramientas, longitud y tipo de perforación).
+async function prefillFromLastReport() {
+  const { mina, equipo } = dailyReportState;
+  const note = document.getElementById('drPrefillNote');
+  note.hidden = true;
+  if (!mina || !equipo) return;
+  try {
+    const top = await CTAuth.fetchLast('produccion', { mina, equipo }, 1);
+    if (!top.length) return;
+    const g = top[0];
+    const grupo = g.grupo_id ? await CTAuth.fetchMatch('produccion', { grupo_id: g.grupo_id }) : [g];
+    // el usuario pudo cambiar de equipo o empezar a escribir mientras se consultaba
+    if (dailyReportState.mina !== mina || dailyReportState.equipo !== equipo) return;
+    const filas = drReadRows();
+    if (filas.length !== 1 || filas[0].tools.some(Boolean) || filas[0].barrenos !== null || filas[0].longitud !== null) return;
+    const tipoSel = document.getElementById('drTipo');
+    if (!tipoSel.value && g.tipo && TIPOS_PERFORACION.includes(g.tipo)) tipoSel.value = g.tipo;
+    const byCodigo = new Map(dailyReportState.activeTools.map(t => [t.codigo_marcado, t]));
+    const usados = new Set(), tools = [];
+    drSlots().forEach((s, i) => {
+      const c = grupo.map(r => r.codigo_marcado).find(cm => !usados.has(cm) && byCodigo.has(cm) && drCategoria(byCodigo.get(cm).herramienta) === s.cat);
+      if (c) { usados.add(c); tools[i] = c; }
+    });
+    if (!tools.some(Boolean) && !(g.longitud > 0)) return;
+    document.getElementById('drRowsBody').innerHTML = drRowHtml({ tools, longitud: g.longitud > 0 ? g.longitud : null });
+    updateDrTotals();
+    const quitadas = grupo.filter(r => !byCodigo.has(r.codigo_marcado)).length;
+    note.hidden = false;
+    note.textContent = `La fila parte del último reporte de ${equipo} (${fmtFechaLarga(g.fecha)}): revisa las herramientas${quitadas ? ` — ${quitadas} de ellas ya no están activas` : ''}, cambia la que cambió y escribe los barrenos.`;
+  } catch (e) { /* si no se puede consultar el último reporte, la fila queda en blanco */ }
+}
+
 function addDrRow() {
   const body = document.getElementById('drRowsBody');
   const rows = drReadRows();
@@ -1846,6 +2054,7 @@ async function saveDailyReport() {
     }
     dailyReportState.activeTools = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
     renderDrRows(true);
+    prefillFromLastReport();
     await renderTodayReports();
     const nFilas = new Set(entries.map(e => e.grupo_id)).size;
     const okEl = document.getElementById('drSuccess');
@@ -2917,6 +3126,9 @@ document.querySelectorAll('.table-tabs button').forEach(b => b.addEventListener(
     renderTable(currentProd, currentLife);
   }));
   document.getElementById('tableSearch').addEventListener('input', (e) => { tableState.search = e.target.value; tableState.page = 1; renderTable(currentProd, currentLife); });
+
+  document.getElementById('exportXlsxBtn').addEventListener('click', exportDashboardXlsx);
+  document.getElementById('exportPdfBtn').addEventListener('click', exportDashboardPdf);
 
   populateFilterOptions();
   renderAll();
