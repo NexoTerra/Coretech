@@ -875,46 +875,6 @@ function renderAll() {
   renderMeta(kpis);
 }
 
-// ============ import ============
-function showImportStatus(msg, kind) {
-  const box = document.getElementById('importStatus');
-  box.textContent = msg;
-  box.className = 'import-status ' + kind;
-  box.style.display = 'block';
-}
-// ============ base de datos oficial ============
-// No hay carga de Excel: el panel usa la base oficial incluida en la aplicación (DEFAULT_BUNDLE).
-// El administrador solo puede publicar esa base oficial para todos los usuarios.
-async function refreshBaseInfo() {
-  const info = document.getElementById('baseInfo'), btn = document.getElementById('publishBaseBtn');
-  const oficial = DEFAULT_BUNDLE;
-  let meta = null, error = '';
-  try { meta = await CTAuth.getDatasetMeta(); } catch (e) { error = e.message; }
-  const publicada = meta && meta.source_filename ? meta.source_filename : '';
-  const alDia = !!publicada && publicada === oficial.meta.source;
-  info.innerHTML = `<p><b>Base oficial de la aplicación:</b> ${esc(oficial.meta.source)} — ${fmtNum(oficial.prod.length)} registros de producción y ${fmtNum(oficial.life.length)} piezas.<br>
-    <b>Base publicada para los usuarios:</b> ${publicada ? esc(publicada) : 'ninguna todavía (los usuarios ven la base oficial incluida)'}${error ? ` <span class="muted">(no se pudo consultar: ${esc(error)})</span>` : ''}.<br>
-    ${alDia ? '<b>Estado:</b> la base publicada es la oficial.' : '<b>Estado:</b> la base publicada es distinta de la oficial.'}</p>`;
-  btn.hidden = alDia || currentUser.role !== 'admin' || !!error;
-}
-async function publishOfficialBase() {
-  if (currentUser.role !== 'admin') return;
-  const oficial = DEFAULT_BUNDLE;
-  if (!confirm(`Se publicará "${oficial.meta.source}" para todos los usuarios y REEMPLAZARÁ la base compartida actual (producción, piezas y catálogo), incluidos los reportes diarios y ediciones hechos desde el panel. ¿Continuar?`)) return;
-  const btn = document.getElementById('publishBaseBtn');
-  btn.disabled = true;
-  showImportStatus('Publicando la base oficial para todos los usuarios… puede tardar un par de minutos, no cierres la página.', 'info');
-  try {
-    await publishSharedBundle(oficial, oficial.meta.source);
-    cachedSharedBundle = oficial;
-    showImportStatus(`Listo: ${fmtNum(oficial.prod.length)} registros y ${fmtNum(oficial.life.length)} piezas de "${oficial.meta.source}" publicados para todos los usuarios.`, 'ok');
-  } catch (err) {
-    showImportStatus(`No se pudo publicar la base (${err.message}). Vuelve a intentarlo.`, 'err');
-  }
-  btn.disabled = false;
-  refreshBaseInfo();
-}
-
 // ============ conciliación (SI/NO por código — compartida vía Supabase) ============
 async function refreshConciliacion() {
   try { conciliacionCache = await CTAuth.loadConciliacionRemote(); }
@@ -1050,7 +1010,6 @@ function updateAuthUI() {
   document.getElementById('hubUserBadge').textContent = label;
   const perfBadge = document.getElementById('perfUserBadge');
   if (perfBadge) perfBadge.textContent = label;
-  document.getElementById('importBtn').hidden = presentationMode || currentUser.role !== 'admin';
 }
 // Se guarda en memoria durante la sesión para que entrar y salir del módulo
 // varias veces no vuelva a traer todo desde Supabase cada vez — solo la
@@ -2914,18 +2873,6 @@ document.querySelectorAll('.table-tabs button').forEach(b => b.addEventListener(
     renderTable(currentProd, currentLife);
   }));
   document.getElementById('tableSearch').addEventListener('input', (e) => { tableState.search = e.target.value; tableState.page = 1; renderTable(currentProd, currentLife); });
-
-  document.getElementById('importBtn').addEventListener('click', () => {
-    const card = document.getElementById('importCard');
-    card.hidden = !card.hidden;
-    if (!card.hidden) { card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); refreshBaseInfo(); }
-  });
-  document.getElementById('publishBaseBtn').addEventListener('click', publishOfficialBase);
-  document.getElementById('restoreBtn').addEventListener('click', () => {
-    BUNDLE = DEFAULT_BUNDLE; filters = EMPTY_FILTERS();
-    herrForRefCache.clear(); populateFilterOptions(); renderAll();
-    showImportStatus('Se restauró tu vista a la base oficial de la aplicación. Esto no cambia la base de datos compartida.', 'info');
-  });
 
   populateFilterOptions();
   renderAll();
