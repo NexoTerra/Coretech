@@ -162,6 +162,7 @@ __CSS__
     </div>
     <p class="empty-note" id="drEmptyNote">Selecciona una mina y un equipo para armar las filas del reporte.</p>
     <div id="drRowsWrap" hidden>
+      <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar todas las herramientas del equipo en cada casilla (por si una está mal clasificada)</span></label>
       <div id="drRowsBody"></div>
       <div class="perf-selection-bar">
         <button class="small" id="drAddRowBtn" type="button">+ Agregar fila</button>
@@ -185,24 +186,11 @@ __CSS__
     </div>
   </section>
 
-  <section class="card">
-    <h3>Dar de baja una herramienta</h3>
-    <p class="chart-sub">Busca el código de la herramienta que cumplió su ciclo o falló, y regístralo — esto la retira del reporte diario.</p>
-    <div class="filterbar">
-      <div class="filter-group" style="flex:1; min-width:260px;">
-        <label>Buscar herramienta activa</label>
-        <input type="search" id="bajaSearch" placeholder="Código, referencia, herramienta…">
-      </div>
-    </div>
-    <div class="table-wrap" id="bajaResultsWrap" hidden>
-      <table>
-        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Equipo</th><th class="num">Metros Acumulados</th><th></th></tr></thead>
-        <tbody id="bajaResultsBody"></tbody>
-      </table>
-    </div>
-    <p class="empty-note" id="bajaEmptyNote" hidden></p>
+  <section class="card" id="bajaCard">
+    <h3>Dar de baja herramientas</h3>
+    <p class="chart-sub">Todas las herramientas activas con su rendimiento: metros acumulados frente al metro garantizado de su referencia. Van ordenadas de mayor a menor rendimiento, para ver primero las que ya cumplieron lo que debían producir.</p>
 
-    <div class="card" id="bajaFormCard" hidden style="background:var(--surface-2); margin-top:14px;">
+    <div class="card" id="bajaFormCard" hidden style="background:var(--surface-2); margin:14px 0;">
       <h3 id="bajaFormTitle">Dar de baja</h3>
       <div class="filterbar">
         <div class="filter-group">
@@ -232,6 +220,23 @@ __CSS__
       </div>
     </div>
     <p class="chart-sub" id="bajaSuccess" hidden></p>
+
+    <div class="filterbar">
+      <div class="filter-group" style="flex:1; min-width:220px;">
+        <label>Buscar</label>
+        <input type="search" id="bajaSearch" placeholder="Código, referencia, herramienta…">
+      </div>
+      <div class="filter-group"><label>Mina</label><select id="bajaMina"><option value="">Todas</option></select></div>
+      <div class="filter-group"><label>Equipo</label><select id="bajaEquipo"><option value="">Todos</option></select></div>
+    </div>
+    <div class="baja-chips" id="bajaChips"></div>
+    <div class="table-wrap baja-scroll">
+      <table>
+        <thead><tr><th>Código</th><th>Herramienta</th><th>Mina</th><th>Equipo</th><th class="num">Metros</th><th class="num">Garantizado</th><th>Rendimiento</th><th></th></tr></thead>
+        <tbody id="bajaResultsBody"></tbody>
+      </table>
+    </div>
+    <p class="empty-note" id="bajaEmptyNote" hidden></p>
   </section>
 </div>
 

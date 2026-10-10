@@ -402,3 +402,15 @@ footer b{color:var(--text-dim);}
   .screen-header .topbar-actions{justify-content:flex-start; width:100%;}
   .screen-header .user-badge{white-space:normal; overflow-wrap:anywhere;}
 }
+
+.pill.muted{background:rgba(110,125,150,.16); color:var(--text-dim);}
+.baja-chips{display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 10px;}
+.baja-chip{border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:999px; padding:6px 12px; font-size:12.5px; cursor:pointer;}
+.baja-chip b{font-variant-numeric:tabular-nums;}
+.baja-chip.active{background:var(--navy); color:#fff; border-color:var(--navy);}
+.baja-chip .hint{display:block; font-size:10.5px; opacity:.75; font-weight:400;}
+.baja-scroll{max-height:540px; overflow:auto;}
+.baja-scroll thead th{position:sticky; top:0; background:var(--surface); z-index:1;}
+.baja-bar{height:5px; border-radius:3px; background:var(--surface-2); margin-top:4px; min-width:90px; overflow:hidden;}
+.baja-bar i{display:block; height:100%; background:var(--cyan);}
+.muted-small{font-size:10.5px; color:var(--text-dim);}

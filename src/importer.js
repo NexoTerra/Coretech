@@ -624,14 +624,18 @@ function buildBundleFromCodigosFormat(workbook, sourceName) {
     const fechaInicio = delivery ? delivery.fechaEntrega : null;
     const tot = totalizadorByCode.get(code);
     const bucket = tot && tot.causa ? bucketCausa(tot.causa.toUpperCase()) : 'SIN_CAUSA';
+    // En TOTALIZADOR la columna FECHA DE DESCARTE trae, para toda pieza, la fecha de su último reporte
+    // (también las ACTIVAS). Una pieza ACTIVA sigue en uso: no tiene fecha de baja y no debe contar como baja.
+    const estadoPieza = (tot && tot.estado) || meta.estado || null;
+    const fechaBaja = (tot && String(estadoPieza || '').toUpperCase() !== 'ACTIVO') ? tot.fechaDescarte : null;
 
     life.push([
       composite, agg.refIdx, agg.herrIdx, Math.round(agg.metrosSum * 1000) / 1000, mg,
-      D_estado.get((tot && tot.estado) || meta.estado || null), bucket,
+      D_estado.get(estadoPieza), bucket,
       tot && tot.causa ? D_causa.get(tot.causa) : null,
       tot && tot.modo ? D_falla.get(tot.modo) : null,
       D_mina.get(meta.mina || null), D_equipo.get(meta.equipo || null),
-      tot ? tot.fechaDescarte : null, usd, fechaInicio,
+      fechaBaja, usd, fechaInicio,
       D_operador.get(meta.operador || null),
     ]);
   }

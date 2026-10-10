@@ -1436,7 +1436,7 @@ function renderPerfTable() {
 // operación de la plataforma.
 const MINAS_SEGOVIA = ['SANDRA K', 'EL SILENCIO', 'PROVIDENCIA'];
 const TIPOS_PERFORACION = ['AVANCE', 'ESCARIADO', 'SOSTENIMIENTO', 'ESCAREADORA'];
-let dailyReportState = { fecha: '', mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null };
+let dailyReportState = { fecha: '', mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null, bajaBand: '', bajaMina: '', bajaEquipo: '', bajaSearch: '', showAll: false };
 const CAUSAS_DESCARTE = ['GEOLOGIA', 'DAÑO OPERACIONAL', 'CONDICION MECANICA', 'DESGASTE', 'SERVICIOS MINA', 'PARAMETROS DE PERFORACION', 'ROSCA INCRUSTADA', 'SIN ESPECIFICAR'];
 const MODOS_FALLA = ['ROTURA DEL CUERPO', 'ROTURA ROSCA T38', 'ROTURA ROSCA R32', 'ROTURA ROSCA R28', 'DESGASTE ROSCA T38', 'DESGASTE ROSCA R32', 'ROSCA INCRUSTADA', 'PERDIDA DE BOTON', 'ROTURA DE BOTON', 'PERDIDA EN TERRENO', 'OP/SIN ESPECIFICAR'];
 
@@ -1450,7 +1450,7 @@ async function enterDigitalizadorScreen() {
   document.getElementById('dailyReportUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
   document.getElementById('dailyReportHomeBtn').hidden = currentUser.role !== 'admin';
   const today = new Date().toISOString().slice(0, 10);
-  dailyReportState = { fecha: today, mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null };
+  dailyReportState = { fecha: today, mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null, bajaBand: '', bajaMina: '', bajaEquipo: '', bajaSearch: '', showAll: false };
 
   const fechaInput = document.getElementById('drFecha');
   fechaInput.value = today;
@@ -1467,12 +1467,14 @@ async function enterDigitalizadorScreen() {
   document.getElementById('bajaCausa').innerHTML = '<option value="">Selecciona…</option>' + CAUSAS_DESCARTE.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
   document.getElementById('bajaFalla').innerHTML = '<option value="">Selecciona…</option>' + MODOS_FALLA.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('');
   document.getElementById('bajaSearch').value = '';
-  document.getElementById('bajaResultsWrap').hidden = true;
-  document.getElementById('bajaEmptyNote').hidden = true;
   document.getElementById('bajaFormCard').hidden = true;
   document.getElementById('bajaSuccess').hidden = true;
+  document.getElementById('drShowAll').checked = false;
 
   wireDailyReportEvents();
+  loadBajaTools().then(renderBajaList).catch(() => {
+    const note = document.getElementById('bajaEmptyNote'); note.hidden = false; note.textContent = 'No se pudo cargar la lista de herramientas activas.';
+  });
   renderDrRows(true);
   await renderTodayReports();
 }
@@ -1527,8 +1529,15 @@ function wireDailyReportEvents() {
   const bajaSearch = document.getElementById('bajaSearch');
   if (!bajaSearch.dataset.wired) {
     bajaSearch.dataset.wired = '1';
-    bajaSearch.addEventListener('input', (e) => { renderBajaResults(e.target.value); });
-    bajaSearch.addEventListener('focus', () => { if (!dailyReportState.bajaTools.length) loadBajaTools(); });
+    bajaSearch.addEventListener('input', (e) => { dailyReportState.bajaSearch = e.target.value; renderBajaList(); });
+    document.getElementById('bajaMina').addEventListener('change', (e) => { dailyReportState.bajaMina = e.target.value; dailyReportState.bajaEquipo = ''; renderBajaList(); });
+    document.getElementById('bajaEquipo').addEventListener('change', (e) => { dailyReportState.bajaEquipo = e.target.value; renderBajaList(); });
+    document.getElementById('bajaChips').addEventListener('click', (e) => {
+      const chip = e.target.closest('.baja-chip'); if (!chip) return;
+      dailyReportState.bajaBand = dailyReportState.bajaBand === chip.dataset.band ? '' : chip.dataset.band;
+      renderBajaList();
+    });
+    document.getElementById('drShowAll').addEventListener('change', (e) => { dailyReportState.showAll = e.target.checked; drRerenderKeepingValues(); });
   }
   const bajaResultsBody = document.getElementById('bajaResultsBody');
   if (!bajaResultsBody.dataset.wired) { bajaResultsBody.dataset.wired = '1'; bajaResultsBody.addEventListener('click', handleSelectBajaTool); }
@@ -1551,22 +1560,46 @@ async function loadBajaTools() {
   dailyReportState.bajaTools = await CTAuth.fetchMatch('piezas', { estado: 'ACTIVO' });
 }
 
-function renderBajaResults(search) {
-  const wrap = document.getElementById('bajaResultsWrap');
+// Rendimiento de una herramienta activa = metros acumulados / metro garantizado de su referencia.
+const BAJA_BANDAS = [
+  { id: 'alto', label: 'Más de 100 %', hint: 'Ya superaron lo que debían producir', pill: 'ok' },
+  { id: 'medio', label: '85 % a 100 %', hint: 'Cerca de cumplir el garantizado', pill: 'warn' },
+  { id: 'bajo', label: 'Menos de 85 %', hint: 'Aún por debajo de lo que deben producir', pill: 'muted' },
+  { id: 'sin', label: 'Sin garantizado', hint: 'La referencia no tiene metro garantizado', pill: 'muted' },
+];
+function bajaPct(t) { return Number(t.metro_garantizado) > 0 ? (Number(t.metros_perforados) || 0) / Number(t.metro_garantizado) * 100 : null; }
+function bajaBanda(p) { return p === null ? 'sin' : p > 100 ? 'alto' : p >= 85 ? 'medio' : 'bajo'; }
+
+function renderBajaList() {
+  const st = dailyReportState;
+  const todas = st.bajaTools.map(t => { const pct = bajaPct(t); return { t, pct, banda: bajaBanda(pct) }; });
+  // opciones de mina y equipo según lo que realmente hay activo
+  const minaSel = document.getElementById('bajaMina'), equipoSel = document.getElementById('bajaEquipo');
+  const minas = Array.from(new Set(todas.map(x => x.t.mina).filter(Boolean))).sort();
+  minaSel.innerHTML = '<option value="">Todas</option>' + minas.map(m => `<option value="${esc(m)}" ${st.bajaMina === m ? 'selected' : ''}>${esc(m)}</option>`).join('');
+  const equipos = Array.from(new Set(todas.filter(x => !st.bajaMina || x.t.mina === st.bajaMina).map(x => x.t.equipo).filter(Boolean))).sort();
+  equipoSel.innerHTML = '<option value="">Todos</option>' + equipos.map(e => `<option value="${esc(e)}" ${st.bajaEquipo === e ? 'selected' : ''}>${esc(e)}</option>`).join('');
+
+  const q = (st.bajaSearch || '').trim().toLowerCase();
+  const base = todas.filter(x => (!st.bajaMina || x.t.mina === st.bajaMina) && (!st.bajaEquipo || x.t.equipo === st.bajaEquipo)
+    && (!q || [x.t.codigo_marcado, x.t.ref_code, x.t.herramienta].some(v => String(v || '').toLowerCase().includes(q))));
+  const cuenta = (id) => base.filter(x => x.banda === id).length;
+  document.getElementById('bajaChips').innerHTML =
+    `<button type="button" class="baja-chip ${st.bajaBand === '' ? 'active' : ''}" data-band="">Todas <b>${fmtNum(base.length)}</b></button>` +
+    BAJA_BANDAS.filter(b => b.id !== 'sin' || cuenta('sin')).map(b => `<button type="button" class="baja-chip ${st.bajaBand === b.id ? 'active' : ''}" data-band="${b.id}"><b>${fmtNum(cuenta(b.id))}</b> ${b.label}<span class="hint">${b.hint}</span></button>`).join('');
+
+  const rows = base.filter(x => !st.bajaBand || x.banda === st.bajaBand)
+    .sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1) || String(a.t.codigo_marcado).localeCompare(String(b.t.codigo_marcado), 'es', { numeric: true }));
   const emptyNote = document.getElementById('bajaEmptyNote');
-  const q = (search || '').trim().toLowerCase();
-  if (!q) { wrap.hidden = true; emptyNote.hidden = true; return; }
-  const rows = dailyReportState.bajaTools.filter(r => [r.codigo_marcado, r.ref_code, r.herramienta].some(v => String(v || '').toLowerCase().includes(q))).slice(0, 20);
-  if (!rows.length) {
-    wrap.hidden = true; emptyNote.hidden = false; emptyNote.textContent = 'Ninguna herramienta activa coincide con la búsqueda.';
-    return;
-  }
-  emptyNote.hidden = true; wrap.hidden = false;
-  document.getElementById('bajaResultsBody').innerHTML = rows.map(r => `<tr>
-    <td>${esc(r.ref_code || '—')}</td><td>${esc(r.herramienta || '—')}</td><td>${esc(r.codigo_marcado)}</td>
-    <td>${esc(r.mina || '—')}</td><td>${esc(r.equipo || '—')}</td>
-    <td class="num">${fmtNum(r.metros_perforados || 0)}</td>
-    <td><button type="button" class="small ghost dr-baja-pick-btn" data-codigo="${esc(r.codigo_marcado)}">Dar de baja</button></td>
+  emptyNote.hidden = rows.length > 0;
+  if (!rows.length) emptyNote.textContent = st.bajaTools.length ? 'Ninguna herramienta activa coincide con los filtros.' : 'No hay herramientas activas.';
+  const pillDe = (b) => BAJA_BANDAS.find(x => x.id === b).pill;
+  document.getElementById('bajaResultsBody').innerHTML = rows.map(({ t, pct, banda }) => `<tr>
+    <td><b>${esc(t.codigo_marcado)}</b></td><td>${esc(t.herramienta || t.ref_code || '—')}<div class="muted-small">${esc(t.ref_code || '')}</div></td>
+    <td>${esc(t.mina || '—')}</td><td>${esc(t.equipo || '—')}</td>
+    <td class="num">${fmtNum(t.metros_perforados || 0)}</td><td class="num">${t.metro_garantizado ? fmtNum(t.metro_garantizado) : '—'}</td>
+    <td>${pct === null ? '<span class="pill muted">—</span>' : `<span class="pill ${pillDe(banda)}">${pct.toFixed(0)} %</span><div class="baja-bar"><i style="width:${Math.min(pct, 100)}%"></i></div>`}</td>
+    <td><button type="button" class="small ghost dr-baja-pick-btn" data-codigo="${esc(t.codigo_marcado)}">Dar de baja</button></td>
   </tr>`).join('');
 }
 
@@ -1585,6 +1618,7 @@ function handleSelectBajaTool(e) {
   document.getElementById('bajaError').hidden = true;
   document.getElementById('bajaSuccess').hidden = true;
   document.getElementById('bajaFormCard').hidden = false;
+  document.getElementById('bajaFormCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function closeBajaForm() {
@@ -1621,8 +1655,7 @@ async function handleConfirmBaja() {
       drRerenderKeepingValues();
     }
     closeBajaForm();
-    document.getElementById('bajaSearch').value = '';
-    document.getElementById('bajaResultsWrap').hidden = true;
+    renderBajaList();
     const okEl = document.getElementById('bajaSuccess');
     okEl.hidden = false;
     okEl.textContent = `"${tool.codigo_marcado}" dada de baja el ${fmtFechaLarga(fecha)}.`;
@@ -1659,20 +1692,28 @@ async function onDailyMinaChange(mina) {
   await renderTodayReports();
 }
 
-// Las 4 columnas de herramientas del registro en papel. Las "sugeridas" de cada
-// columna se deducen del texto de la descripción (la tabla piezas no guarda
-// categoría); las demás herramientas del equipo siguen disponibles en "Otras".
+// Las 4 columnas de herramientas del registro en papel. Cada herramienta se clasifica en UNA categoría
+// según su descripción (la tabla piezas no guarda categoría) y cada casilla solo ofrece su categoría;
+// las que no se pueden clasificar salen aparte, y la casilla "mostrar todas" abre el resto.
+function drCategoria(desc) {
+  const d = String(desc || '');
+  if (/SHANK/i.test(d)) return 'SHANK';
+  if (/ACOPLE|COUPLING|ADAPTADOR/i.test(d)) return 'ACOPLE';
+  if (/BROCA|\bBIT\b|REAMING|BUTTON|PUNZ/i.test(d)) return 'BROCA';
+  if (/BARRA|BARRENA|ROD\b|EXTENSI/i.test(d)) return 'BARRA';
+  return '';
+}
 const DR_SLOTS_PERFORACION = [
-  { label: 'Shank', re: /SHANK/i },
-  { label: 'Acople', re: /ACOPLE|COUPLING/i },
-  { label: 'Barrena', re: /BARRA|BARRENA|ROD\b/i },
-  { label: 'Broca', re: /BROCA|\bBIT\b|REAMING/i },
+  { label: 'Shank', cat: 'SHANK' },
+  { label: 'Acople', cat: 'ACOPLE' },
+  { label: 'Barrena', cat: 'BARRA' },
+  { label: 'Broca', cat: 'BROCA' },
 ];
 const DR_SLOTS_SOSTENIMIENTO = [
-  { label: 'Shank', re: /SHANK/i },
-  { label: 'Acople / Adaptador', re: /ACOPLE|ADAPTADOR/i },
-  { label: 'Extensión', re: /EXTENSI/i },
-  { label: 'Punzón', re: /PUNZ/i },
+  { label: 'Shank', cat: 'SHANK' },
+  { label: 'Acople / Adaptador', cat: 'ACOPLE' },
+  { label: 'Extensión', cat: 'BARRA' },
+  { label: 'Broca / Punzón', cat: 'BROCA' },
 ];
 function drSlots() {
   return document.getElementById('drTipo').value === 'SOSTENIMIENTO' ? DR_SLOTS_SOSTENIMIENTO : DR_SLOTS_PERFORACION;
@@ -1684,11 +1725,14 @@ function drEquipoTools() {
 }
 function drSlotOptions(slot, tools, selected) {
   const opt = (t) => `<option value="${esc(t.codigo_marcado)}" ${t.codigo_marcado === selected ? 'selected' : ''}>${esc(t.codigo_marcado)} · ${esc(t.herramienta || t.ref_code || '')} (${fmtNum(t.metros_perforados || 0)}${t.metro_garantizado ? '/' + fmtNum(t.metro_garantizado) : ''} m)</option>`;
-  const sug = tools.filter(t => slot.re.test(t.herramienta || ''));
-  const otras = tools.filter(t => !slot.re.test(t.herramienta || ''));
-  let h = '<option value="">—</option>';
-  if (sug.length) h += `<optgroup label="Sugeridas">${sug.map(opt).join('')}</optgroup>`;
-  if (otras.length) h += `<optgroup label="Otras del equipo">${otras.map(opt).join('')}</optgroup>`;
+  const cat = (t) => drCategoria(t.herramienta);
+  const propias = tools.filter(t => cat(t) === slot.cat);
+  const sinClasif = tools.filter(t => !cat(t));
+  const otras = tools.filter(t => cat(t) && cat(t) !== slot.cat);
+  let h = '<option value="">—</option>' + propias.map(opt).join('');
+  if (sinClasif.length) h += `<optgroup label="Sin clasificar">${sinClasif.map(opt).join('')}</optgroup>`;
+  if (dailyReportState.showAll && otras.length) h += `<optgroup label="Otras categorías">${otras.map(opt).join('')}</optgroup>`;
+  else if (selected) { const s = otras.find(t => t.codigo_marcado === selected); if (s) h += `<optgroup label="Elegida">${opt(s)}</optgroup>`; }
   return h;
 }
 function drRowHtml(vals) {
