@@ -581,8 +581,7 @@ footer b{color:var(--text-dim);}
       <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar todas las herramientas del equipo en cada casilla (por si una está mal clasificada)</span></label>
       <div id="drRowsBody"></div>
       <div class="perf-selection-bar">
-        <button class="small" id="drAddRowBtn" type="button">+ Agregar fila</button>
-        <button class="small" id="drDupRowBtn" type="button" title="Copia la última fila (mismas herramientas y longitud) para registrar un cambio de broca u otra herramienta">Duplicar última fila (cambio de herramienta)</button>
+        <button class="small" id="drAddRowBtn" type="button" title="La fila nueva trae las mismas herramientas y longitud de la anterior: cambia solo la que cambió (por ejemplo la broca) y escribe los barrenos">+ Agregar fila (con las herramientas de la anterior)</button>
         <span class="perf-selection-count" id="drTotalMetros">0 m en total</span>
         <button class="small primary" id="drSaveBtn" type="button" disabled>Guardar reporte</button>
       </div>
@@ -4843,9 +4842,7 @@ function wireDailyReportEvents() {
     });
   }
   const addRowBtn = document.getElementById('drAddRowBtn');
-  if (!addRowBtn.dataset.wired) { addRowBtn.dataset.wired = '1'; addRowBtn.addEventListener('click', () => addDrRow(false)); }
-  const dupRowBtn = document.getElementById('drDupRowBtn');
-  if (!dupRowBtn.dataset.wired) { dupRowBtn.dataset.wired = '1'; dupRowBtn.addEventListener('click', () => addDrRow(true)); }
+  if (!addRowBtn.dataset.wired) { addRowBtn.dataset.wired = '1'; addRowBtn.addEventListener('click', addDrRow); }
   const saveBtn = document.getElementById('drSaveBtn');
   if (!saveBtn.dataset.wired) { saveBtn.dataset.wired = '1'; saveBtn.addEventListener('click', saveDailyReport); }
 
@@ -5103,14 +5100,16 @@ function drRerenderKeepingValues() {
   document.getElementById('drRowsBody').innerHTML = (rows.length ? rows : [{}]).map(drRowHtml).join('');
   updateDrTotals();
 }
-function addDrRow(copyLast) {
+// La fila nueva parte de la anterior (mismas herramientas y longitud, sin barrenos): normalmente solo cambia
+// una herramienta (la broca cada 6 a 10 barrenos) y los barrenos.
+function addDrRow() {
   const body = document.getElementById('drRowsBody');
   const rows = drReadRows();
   const last = rows[rows.length - 1];
-  const vals = (copyLast && last) ? { tools: last.tools, longitud: last.longitud, barrenos: null } : { longitud: last ? last.longitud : null };
+  const vals = last ? { tools: last.tools, longitud: last.longitud, barrenos: null } : {};
   body.insertAdjacentHTML('beforeend', drRowHtml(vals));
   const newRow = body.lastElementChild;
-  const focusEl = copyLast ? newRow.querySelector('.dr-slot[data-slot="3"]') : newRow.querySelector('.dr-slot[data-slot="0"]');
+  const focusEl = last ? newRow.querySelector('.dr-slot[data-slot="3"]') : newRow.querySelector('.dr-slot[data-slot="0"]');
   if (focusEl) focusEl.focus();
   updateDrTotals();
 }

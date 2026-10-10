@@ -1517,9 +1517,7 @@ function wireDailyReportEvents() {
     });
   }
   const addRowBtn = document.getElementById('drAddRowBtn');
-  if (!addRowBtn.dataset.wired) { addRowBtn.dataset.wired = '1'; addRowBtn.addEventListener('click', () => addDrRow(false)); }
-  const dupRowBtn = document.getElementById('drDupRowBtn');
-  if (!dupRowBtn.dataset.wired) { dupRowBtn.dataset.wired = '1'; dupRowBtn.addEventListener('click', () => addDrRow(true)); }
+  if (!addRowBtn.dataset.wired) { addRowBtn.dataset.wired = '1'; addRowBtn.addEventListener('click', addDrRow); }
   const saveBtn = document.getElementById('drSaveBtn');
   if (!saveBtn.dataset.wired) { saveBtn.dataset.wired = '1'; saveBtn.addEventListener('click', saveDailyReport); }
 
@@ -1777,14 +1775,16 @@ function drRerenderKeepingValues() {
   document.getElementById('drRowsBody').innerHTML = (rows.length ? rows : [{}]).map(drRowHtml).join('');
   updateDrTotals();
 }
-function addDrRow(copyLast) {
+// La fila nueva parte de la anterior (mismas herramientas y longitud, sin barrenos): normalmente solo cambia
+// una herramienta (la broca cada 6 a 10 barrenos) y los barrenos.
+function addDrRow() {
   const body = document.getElementById('drRowsBody');
   const rows = drReadRows();
   const last = rows[rows.length - 1];
-  const vals = (copyLast && last) ? { tools: last.tools, longitud: last.longitud, barrenos: null } : { longitud: last ? last.longitud : null };
+  const vals = last ? { tools: last.tools, longitud: last.longitud, barrenos: null } : {};
   body.insertAdjacentHTML('beforeend', drRowHtml(vals));
   const newRow = body.lastElementChild;
-  const focusEl = copyLast ? newRow.querySelector('.dr-slot[data-slot="3"]') : newRow.querySelector('.dr-slot[data-slot="0"]');
+  const focusEl = last ? newRow.querySelector('.dr-slot[data-slot="3"]') : newRow.querySelector('.dr-slot[data-slot="0"]');
   if (focusEl) focusEl.focus();
   updateDrTotals();
 }
