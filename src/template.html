@@ -153,16 +153,17 @@ __CSS__
       <div class="filter-group"><label>Mina</label><select id="drMina"><option value="">Selecciona…</option></select></div>
       <div class="filter-group"><label>Frente</label><input type="text" id="drFrente" placeholder="Ej: Nivel 5 Norte"></div>
       <div class="filter-group"><label>Equipo</label><select id="drEquipo" disabled><option value="">Selecciona una mina primero</option></select></div>
-      <div class="filter-group"><label>Operador 1</label><input type="text" id="drOperador" placeholder="Nombre del operador"></div>
-      <div class="filter-group"><label>Operador 2</label><input type="text" id="drOperador2" placeholder="Opcional"></div>
+      <div class="filter-group"><label>Operador 1</label><input type="text" id="drOperador" list="drOperadoresList" autocomplete="off" placeholder="Escribe o elige el operador"></div>
+      <div class="filter-group"><label>Operador 2</label><input type="text" id="drOperador2" list="drOperadoresList" autocomplete="off" placeholder="Opcional"></div>
       <div class="filter-group"><label>Tipo de perforación</label><select id="drTipo"><option value="">Selecciona…</option></select></div>
       <div class="filter-group"><label>Turno</label><select id="drTurno"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
       <div class="filter-group"><label>Jornada</label><select id="drJornada"><option value="">—</option><option value="DIA">Día</option><option value="NOCHE">Noche</option></select></div>
       <div class="filter-group"><label>N° de reporte</label><input type="text" id="drReporteNo" placeholder="Opcional"></div>
     </div>
+    <datalist id="drOperadoresList"></datalist>
     <p class="empty-note" id="drEmptyNote">Selecciona una mina y un equipo para armar las filas del reporte.</p>
     <div id="drRowsWrap" hidden>
-      <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar todas las herramientas del equipo en cada casilla (por si una está mal clasificada)</span></label>
+      <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar también las herramientas de otras categorías y de otros equipos de la mina (las de otro equipo pasan a este equipo al guardar)</span></label>
       <p class="chart-sub" id="drPrefillNote" hidden></p>
       <div id="drRowsBody"></div>
       <div class="perf-selection-bar">
@@ -198,17 +199,10 @@ __CSS__
           <input type="date" id="bajaFecha">
         </div>
         <div class="filter-group">
-          <label>Modo de baja</label>
-          <select id="bajaModo">
-            <option value="fin_vida">Cumplió su vida útil</option>
-            <option value="falla">Falla prematura / descarte anticipado</option>
-          </select>
-        </div>
-        <div class="filter-group" id="bajaCausaGroup" hidden>
           <label>Causa de descarte</label>
           <select id="bajaCausa"><option value="">Selecciona…</option></select>
         </div>
-        <div class="filter-group" id="bajaFallaGroup" hidden>
+        <div class="filter-group">
           <label>Modo de falla</label>
           <select id="bajaFalla"><option value="">Selecciona…</option></select>
         </div>
@@ -238,6 +232,38 @@ __CSS__
     </div>
     <p class="empty-note" id="bajaEmptyNote" hidden></p>
   </section>
+
+  <section class="card" id="bajasRegCard">
+    <h3>Bajas registradas</h3>
+    <p class="chart-sub">Corrige la fecha, la causa o el modo de falla de una baja ya registrada. Si una herramienta se dio de baja por error, puedes devolverla a activa. El filtro «Sin causa o modo» muestra las bajas que todavía no tienen esos datos.</p>
+    <div class="card" id="brFormCard" hidden style="background:var(--surface-2); margin:14px 0;">
+      <h3 id="brFormTitle">Corregir baja</h3>
+      <div class="filterbar">
+        <div class="filter-group"><label>Fecha de baja</label><input type="date" id="brFecha"></div>
+        <div class="filter-group"><label>Causa de descarte</label><select id="brCausa"><option value="">Selecciona…</option></select></div>
+        <div class="filter-group"><label>Modo de falla</label><select id="brFalla"><option value="">Selecciona…</option></select></div>
+      </div>
+      <p class="login-error" id="brError" hidden></p>
+      <div class="perf-selection-bar">
+        <button class="small ghost" id="brCancelBtn" type="button">Cancelar</button>
+        <button class="small ghost danger" id="brReactivarBtn" type="button">Deshacer la baja (volver a activa)</button>
+        <button class="small primary" id="brSaveBtn" type="button">Guardar corrección</button>
+      </div>
+    </div>
+    <p class="chart-sub" id="brSuccess" hidden></p>
+    <div class="filterbar">
+      <div class="filter-group" style="flex:1; min-width:220px;"><label>Buscar</label><input type="search" id="brSearch" placeholder="Código, referencia, herramienta, causa…"></div>
+      <div class="filter-group"><label>Mina</label><select id="brMina"><option value="">Todas</option></select></div>
+      <div class="filter-group"><label>Mostrar</label><select id="brFiltro"><option value="todas">Todas las bajas</option><option value="sin">Sin causa o modo</option><option value="con">Con causa y modo</option></select></div>
+    </div>
+    <p class="chart-sub" id="brResumen"></p>
+    <div class="table-wrap baja-scroll">
+      <table>
+        <thead><tr><th>Código</th><th>Herramienta</th><th>Mina</th><th>Equipo</th><th>Fecha de baja</th><th>Causa de descarte</th><th>Modo de falla</th><th></th></tr></thead>
+        <tbody id="brBody"></tbody>
+      </table>
+    </div>
+  </section>
 </div>
 
 <!-- Pantalla del Supervisor: registrar códigos nuevos (altas) y despachos a
@@ -258,13 +284,17 @@ __CSS__
     </div>
   </div>
 
-  <section class="card">
+  <section class="card" id="altaCard">
     <h3>Registrar código nuevo</h3>
     <p class="chart-sub">Si ya sabes a qué mina y equipo va, complétalos y queda despachada de una vez. Si la dejas sin mina, queda en bodega para despacharla después.</p>
     <div class="filterbar">
-      <div class="filter-group">
+      <div class="filter-group" id="altaUnoGroup">
         <label>Código de marcado</label>
         <input type="text" id="altaCodigo" placeholder="Ej: Y412">
+      </div>
+      <div class="filter-group" id="altaVariosGroup" hidden style="min-width:280px; flex:1;">
+        <label>Códigos (uno por línea, o separados por coma o espacio)</label>
+        <textarea id="altaCodigos" rows="4" placeholder="Y412&#10;Y413&#10;Y414"></textarea>
       </div>
       <div class="filter-group" style="min-width:260px;">
         <label>Referencia</label>
@@ -283,6 +313,7 @@ __CSS__
         <input type="text" id="altaEquipo" placeholder="Ej: JUMBO-8" disabled>
       </div>
     </div>
+    <label style="display:inline-flex; gap:6px; align-items:center; font-size:12.5px; margin:6px 0;"><input type="checkbox" id="altaVarios"> <span>Registrar varios códigos a la vez (misma referencia, fecha y destino)</span></label>
     <p class="login-error" id="altaError" hidden></p>
     <p class="chart-sub" id="altaSuccess" hidden></p>
     <div class="perf-selection-bar">
@@ -293,6 +324,7 @@ __CSS__
   <section class="card">
     <h3>En bodega — sin despachar</h3>
     <p class="chart-sub">Códigos ya registrados que todavía no se han asignado a una mina y un equipo.</p>
+    <div class="perf-selection-bar" style="margin-bottom:8px;"><button class="small primary" id="bodegaRegistrarBtn" type="button">+ Registrar código en bodega</button></div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Equipo</th><th>Fecha</th><th></th></tr></thead>
@@ -704,9 +736,12 @@ __CSS__
   <section class="card presentation-hide">
     <h3>CPM — Costo por metro</h3>
     <p class="chart-sub">
-      CPM real = precio unitario de la herramienta / metros que realmente logra en promedio. CPM ideal = precio
-      unitario / metro garantizado. Solo se cuentan piezas que ya tienen fecha de baja registrada — una pieza
-      todavía activa no ha terminado de acumular metros y distorsionaría el promedio.
+      <b>CPM real de la sarta</b> = lo que cuesta perforar un metro con el conjunto completo de herramientas (shank +
+      acople + barra + broca): es la suma de los CPM de cada una, promediada sobre los meses del periodo (es la
+      misma serie de la gráfica «CPM por sarta»). <b>CPM real por herramienta</b> = dólares gastados ÷ metros
+      logrados tomando cada herramienta por separado, por eso es mucho menor: no suma las herramientas de la sarta.
+      <b>CPM ideal</b> = precio unitario ÷ metro garantizado. Solo se cuentan piezas que ya tienen fecha de baja
+      registrada — una pieza todavía activa no ha terminado de acumular metros y distorsionaría el promedio.
     </p>
     <div class="kpirow" id="cpmKpiRow"></div>
     <h4 style="margin:18px 0 4px; font-size:13px;">CPM real vs. CPM ideal por herramienta (top 12 por metros perforados)</h4>
@@ -722,9 +757,10 @@ __CSS__
   <section class="card presentation-hide">
     <h3>Ganancia / pérdida por herramienta</h3>
     <p class="chart-sub">
-      Por cada pieza por debajo del 85% del metro ideal se calcula lo que el cliente pierde (metros que faltaron
-      × costo por metro ideal); por encima del 100% se calcula lo que gana (metros de más al mismo costo). Entre
-      85% y 100% es zona aceptable y no se cuantifica.
+      Solo cuenta piezas ya dadas de baja (ciclo cerrado). Por cada pieza por debajo del 85% del metro ideal se
+      calcula lo que el cliente pierde: metros que le faltaron para el metro ideal × costo por metro ideal (precio ÷
+      metro ideal). Por encima del 100% se calcula lo que gana: metros de más × el mismo costo. Entre 85% y 100% es
+      zona aceptable y no se cuantifica. El neto de cada herramienta compensa sus pérdidas con sus ganancias.
     </p>
     <div class="kpirow" id="gpKpiRow"></div>
     <div class="table-wrap"><table id="gpTable"></table></div>

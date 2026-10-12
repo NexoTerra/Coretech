@@ -610,8 +610,10 @@ function gananciaPerdidaPorHerramienta(bundle, life) {
   const { dict } = bundle;
   const map = new Map();
   for (const l of life) {
-    const [, refIdx, herrIdx, mp, mg, , , , , , , , usd] = l;
+    const [, refIdx, herrIdx, mp, mg, estadoIdx, , , , , , , usd] = l;
     if (refIdx === null || refIdx === undefined || !mg || mp <= 0) continue;
+    // Solo piezas dadas de baja (ciclo cerrado): una pieza activa todavía está acumulando metros y no se puede evaluar como pérdida.
+    if (dict.estado[estadoIdx] !== 'INACTIVO') continue;
     if (!map.has(refIdx)) map.set(refIdx, { herrIdx, nPerdida: 0, perdidaM: 0, perdidaUSD: 0, nGanancia: 0, gananciaM: 0, gananciaUSD: 0, nAceptable: 0 });
     const e = map.get(refIdx);
     const cpmIdeal = usd ? usd / mg : null;

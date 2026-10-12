@@ -569,16 +569,17 @@ footer b{color:var(--text-dim);}
       <div class="filter-group"><label>Mina</label><select id="drMina"><option value="">Selecciona…</option></select></div>
       <div class="filter-group"><label>Frente</label><input type="text" id="drFrente" placeholder="Ej: Nivel 5 Norte"></div>
       <div class="filter-group"><label>Equipo</label><select id="drEquipo" disabled><option value="">Selecciona una mina primero</option></select></div>
-      <div class="filter-group"><label>Operador 1</label><input type="text" id="drOperador" placeholder="Nombre del operador"></div>
-      <div class="filter-group"><label>Operador 2</label><input type="text" id="drOperador2" placeholder="Opcional"></div>
+      <div class="filter-group"><label>Operador 1</label><input type="text" id="drOperador" list="drOperadoresList" autocomplete="off" placeholder="Escribe o elige el operador"></div>
+      <div class="filter-group"><label>Operador 2</label><input type="text" id="drOperador2" list="drOperadoresList" autocomplete="off" placeholder="Opcional"></div>
       <div class="filter-group"><label>Tipo de perforación</label><select id="drTipo"><option value="">Selecciona…</option></select></div>
       <div class="filter-group"><label>Turno</label><select id="drTurno"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
       <div class="filter-group"><label>Jornada</label><select id="drJornada"><option value="">—</option><option value="DIA">Día</option><option value="NOCHE">Noche</option></select></div>
       <div class="filter-group"><label>N° de reporte</label><input type="text" id="drReporteNo" placeholder="Opcional"></div>
     </div>
+    <datalist id="drOperadoresList"></datalist>
     <p class="empty-note" id="drEmptyNote">Selecciona una mina y un equipo para armar las filas del reporte.</p>
     <div id="drRowsWrap" hidden>
-      <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar todas las herramientas del equipo en cada casilla (por si una está mal clasificada)</span></label>
+      <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar también las herramientas de otras categorías y de otros equipos de la mina (las de otro equipo pasan a este equipo al guardar)</span></label>
       <p class="chart-sub" id="drPrefillNote" hidden></p>
       <div id="drRowsBody"></div>
       <div class="perf-selection-bar">
@@ -614,17 +615,10 @@ footer b{color:var(--text-dim);}
           <input type="date" id="bajaFecha">
         </div>
         <div class="filter-group">
-          <label>Modo de baja</label>
-          <select id="bajaModo">
-            <option value="fin_vida">Cumplió su vida útil</option>
-            <option value="falla">Falla prematura / descarte anticipado</option>
-          </select>
-        </div>
-        <div class="filter-group" id="bajaCausaGroup" hidden>
           <label>Causa de descarte</label>
           <select id="bajaCausa"><option value="">Selecciona…</option></select>
         </div>
-        <div class="filter-group" id="bajaFallaGroup" hidden>
+        <div class="filter-group">
           <label>Modo de falla</label>
           <select id="bajaFalla"><option value="">Selecciona…</option></select>
         </div>
@@ -654,6 +648,38 @@ footer b{color:var(--text-dim);}
     </div>
     <p class="empty-note" id="bajaEmptyNote" hidden></p>
   </section>
+
+  <section class="card" id="bajasRegCard">
+    <h3>Bajas registradas</h3>
+    <p class="chart-sub">Corrige la fecha, la causa o el modo de falla de una baja ya registrada. Si una herramienta se dio de baja por error, puedes devolverla a activa. El filtro «Sin causa o modo» muestra las bajas que todavía no tienen esos datos.</p>
+    <div class="card" id="brFormCard" hidden style="background:var(--surface-2); margin:14px 0;">
+      <h3 id="brFormTitle">Corregir baja</h3>
+      <div class="filterbar">
+        <div class="filter-group"><label>Fecha de baja</label><input type="date" id="brFecha"></div>
+        <div class="filter-group"><label>Causa de descarte</label><select id="brCausa"><option value="">Selecciona…</option></select></div>
+        <div class="filter-group"><label>Modo de falla</label><select id="brFalla"><option value="">Selecciona…</option></select></div>
+      </div>
+      <p class="login-error" id="brError" hidden></p>
+      <div class="perf-selection-bar">
+        <button class="small ghost" id="brCancelBtn" type="button">Cancelar</button>
+        <button class="small ghost danger" id="brReactivarBtn" type="button">Deshacer la baja (volver a activa)</button>
+        <button class="small primary" id="brSaveBtn" type="button">Guardar corrección</button>
+      </div>
+    </div>
+    <p class="chart-sub" id="brSuccess" hidden></p>
+    <div class="filterbar">
+      <div class="filter-group" style="flex:1; min-width:220px;"><label>Buscar</label><input type="search" id="brSearch" placeholder="Código, referencia, herramienta, causa…"></div>
+      <div class="filter-group"><label>Mina</label><select id="brMina"><option value="">Todas</option></select></div>
+      <div class="filter-group"><label>Mostrar</label><select id="brFiltro"><option value="todas">Todas las bajas</option><option value="sin">Sin causa o modo</option><option value="con">Con causa y modo</option></select></div>
+    </div>
+    <p class="chart-sub" id="brResumen"></p>
+    <div class="table-wrap baja-scroll">
+      <table>
+        <thead><tr><th>Código</th><th>Herramienta</th><th>Mina</th><th>Equipo</th><th>Fecha de baja</th><th>Causa de descarte</th><th>Modo de falla</th><th></th></tr></thead>
+        <tbody id="brBody"></tbody>
+      </table>
+    </div>
+  </section>
 </div>
 
 <!-- Pantalla del Supervisor: registrar códigos nuevos (altas) y despachos a
@@ -674,13 +700,17 @@ footer b{color:var(--text-dim);}
     </div>
   </div>
 
-  <section class="card">
+  <section class="card" id="altaCard">
     <h3>Registrar código nuevo</h3>
     <p class="chart-sub">Si ya sabes a qué mina y equipo va, complétalos y queda despachada de una vez. Si la dejas sin mina, queda en bodega para despacharla después.</p>
     <div class="filterbar">
-      <div class="filter-group">
+      <div class="filter-group" id="altaUnoGroup">
         <label>Código de marcado</label>
         <input type="text" id="altaCodigo" placeholder="Ej: Y412">
+      </div>
+      <div class="filter-group" id="altaVariosGroup" hidden style="min-width:280px; flex:1;">
+        <label>Códigos (uno por línea, o separados por coma o espacio)</label>
+        <textarea id="altaCodigos" rows="4" placeholder="Y412&#10;Y413&#10;Y414"></textarea>
       </div>
       <div class="filter-group" style="min-width:260px;">
         <label>Referencia</label>
@@ -699,6 +729,7 @@ footer b{color:var(--text-dim);}
         <input type="text" id="altaEquipo" placeholder="Ej: JUMBO-8" disabled>
       </div>
     </div>
+    <label style="display:inline-flex; gap:6px; align-items:center; font-size:12.5px; margin:6px 0;"><input type="checkbox" id="altaVarios"> <span>Registrar varios códigos a la vez (misma referencia, fecha y destino)</span></label>
     <p class="login-error" id="altaError" hidden></p>
     <p class="chart-sub" id="altaSuccess" hidden></p>
     <div class="perf-selection-bar">
@@ -709,6 +740,7 @@ footer b{color:var(--text-dim);}
   <section class="card">
     <h3>En bodega — sin despachar</h3>
     <p class="chart-sub">Códigos ya registrados que todavía no se han asignado a una mina y un equipo.</p>
+    <div class="perf-selection-bar" style="margin-bottom:8px;"><button class="small primary" id="bodegaRegistrarBtn" type="button">+ Registrar código en bodega</button></div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Equipo</th><th>Fecha</th><th></th></tr></thead>
@@ -1120,9 +1152,12 @@ footer b{color:var(--text-dim);}
   <section class="card presentation-hide">
     <h3>CPM — Costo por metro</h3>
     <p class="chart-sub">
-      CPM real = precio unitario de la herramienta / metros que realmente logra en promedio. CPM ideal = precio
-      unitario / metro garantizado. Solo se cuentan piezas que ya tienen fecha de baja registrada — una pieza
-      todavía activa no ha terminado de acumular metros y distorsionaría el promedio.
+      <b>CPM real de la sarta</b> = lo que cuesta perforar un metro con el conjunto completo de herramientas (shank +
+      acople + barra + broca): es la suma de los CPM de cada una, promediada sobre los meses del periodo (es la
+      misma serie de la gráfica «CPM por sarta»). <b>CPM real por herramienta</b> = dólares gastados ÷ metros
+      logrados tomando cada herramienta por separado, por eso es mucho menor: no suma las herramientas de la sarta.
+      <b>CPM ideal</b> = precio unitario ÷ metro garantizado. Solo se cuentan piezas que ya tienen fecha de baja
+      registrada — una pieza todavía activa no ha terminado de acumular metros y distorsionaría el promedio.
     </p>
     <div class="kpirow" id="cpmKpiRow"></div>
     <h4 style="margin:18px 0 4px; font-size:13px;">CPM real vs. CPM ideal por herramienta (top 12 por metros perforados)</h4>
@@ -1138,9 +1173,10 @@ footer b{color:var(--text-dim);}
   <section class="card presentation-hide">
     <h3>Ganancia / pérdida por herramienta</h3>
     <p class="chart-sub">
-      Por cada pieza por debajo del 85% del metro ideal se calcula lo que el cliente pierde (metros que faltaron
-      × costo por metro ideal); por encima del 100% se calcula lo que gana (metros de más al mismo costo). Entre
-      85% y 100% es zona aceptable y no se cuantifica.
+      Solo cuenta piezas ya dadas de baja (ciclo cerrado). Por cada pieza por debajo del 85% del metro ideal se
+      calcula lo que el cliente pierde: metros que le faltaron para el metro ideal × costo por metro ideal (precio ÷
+      metro ideal). Por encima del 100% se calcula lo que gana: metros de más × el mismo costo. Entre 85% y 100% es
+      zona aceptable y no se cuantifica. El neto de cada herramienta compensa sus pérdidas con sus ganancias.
     </p>
     <div class="kpirow" id="gpKpiRow"></div>
     <div class="table-wrap"><table id="gpTable"></table></div>
@@ -1862,8 +1898,10 @@ function gananciaPerdidaPorHerramienta(bundle, life) {
   const { dict } = bundle;
   const map = new Map();
   for (const l of life) {
-    const [, refIdx, herrIdx, mp, mg, , , , , , , , usd] = l;
+    const [, refIdx, herrIdx, mp, mg, estadoIdx, , , , , , , usd] = l;
     if (refIdx === null || refIdx === undefined || !mg || mp <= 0) continue;
+    // Solo piezas dadas de baja (ciclo cerrado): una pieza activa todavía está acumulando metros y no se puede evaluar como pérdida.
+    if (dict.estado[estadoIdx] !== 'INACTIVO') continue;
     if (!map.has(refIdx)) map.set(refIdx, { herrIdx, nPerdida: 0, perdidaM: 0, perdidaUSD: 0, nGanancia: 0, gananciaM: 0, gananciaUSD: 0, nAceptable: 0 });
     const e = map.get(refIdx);
     const cpmIdeal = usd ? usd / mg : null;
@@ -3703,7 +3741,7 @@ function applyDatePreset(kind) {
 }
 
 // ============ KPI cards ============
-function renderKPICards(kpis, vidaUtil) {
+function renderKPICards(kpis, vidaUtil, activasHoy) {
   const row = document.getElementById('kpiRow');
   const lastMonth = kpis.months.length ? kpis.months[kpis.months.length - 1] : null;
   const activeLastMonth = lastMonth ? kpis.toolsByMonth.get(lastMonth).size : 0;
@@ -3714,13 +3752,14 @@ function renderKPICards(kpis, vidaUtil) {
   const cards = [
     { label: 'Metros perforados', value: fmtNum(kpis.totalMetros) + ' <small>m</small>', sub: `${kpis.months.length} meses en el rango`, accent: true },
     { label: 'Promedio mensual', value: fmtNum(kpis.promedioCompletos || kpis.promedioTodos) + ' <small>m/mes</small>', sub: 'Excluye meses parciales en los extremos' },
-    { label: 'Códigos activos', value: fmtNum(activeLastMonth), sub: lastMonth ? `En ${esc(ymLabel(lastMonth))}` : '—' },
-    { label: 'Referencias activas', value: fmtNum(kpis.referenciasActivas), sub: `${fmtNum(kpis.piezasActivas)} piezas trazadas` },
+    { label: 'Códigos con metros', value: fmtNum(activeLastMonth), sub: lastMonth ? `En ${esc(ymLabel(lastMonth))}` : '—' },
+    { label: 'Referencias con metros', value: fmtNum(kpis.referenciasActivas), sub: `${fmtNum(kpis.piezasActivas)} piezas con metros en el periodo filtrado` },
+    { label: 'Herramientas activas hoy', value: fmtNum(activasHoy), sub: 'Piezas en estado Activo en la mina — no depende del rango de fechas' },
     { label: 'Metros / herramienta activa', value: fmtNum(Math.round(avgPerToolMonth)) + ' <small>m/mes</small>', sub: 'Promedio del periodo filtrado' },
     { label: 'Cumplimiento global', value: (kpis.cumplimientoGlobal !== null ? kpis.cumplimientoGlobal.toFixed(1) + '<small>%</small>' : '—'), sub: `${kpis.nCiclosCerrados} piezas con ciclo cerrado` },
   ];
   if (!presentationMode) {
-    cards.push({ label: 'Oportunidad recuperable', value: fmtCompact(kpis.recuperableM) + ' <small>m</small>', sub: `≈ USD ${fmtNum(Math.round(kpis.recuperableUSD))} · piezas dadas de baja antes de cumplir garantía` });
+    cards.push({ label: 'Oportunidad recuperable', value: 'USD ' + fmtCompact(Math.round(kpis.recuperableUSD)), sub: `${fmtCompact(kpis.recuperableM)} m de herramienta que faltaron en piezas dadas de baja antes de cumplir su garantía (no son metros perforados)` });
   }
   cards.push({ label: 'Vida útil promedio', value: (vidaUtil.mediaDias !== null ? fmtNum(Math.round(vidaUtil.mediaDias)) + ' <small>días</small>' : '—'), sub: vidaUtil.n ? `mediana ${fmtNum(Math.round(vidaUtil.medianaDias))} días · ${fmtNum(vidaUtil.n)} piezas con ambas fechas` : 'sin piezas con fecha de inicio y de baja' });
   row.innerHTML = '';
@@ -3939,6 +3978,25 @@ function renderPromedioReferencia(bundle, prod, life) {
 }
 
 // ============ CPM ============
+// Sarta que se muestra en la tarjeta «CPM real de la sarta»: la del filtro Sarta si hay una; si no, la visible con más piezas dadas de baja.
+// Valor = promedio de los meses completos (todas las herramientas de la sarta con datos) de la misma serie de la gráfica «CPM por sarta».
+function sartaPrincipalCpm(bundle, life) {
+  let tot = cpmPorSartaTotal(bundle, life);
+  if (filters.sarta.length) tot = tot.filter(s => filters.sarta.includes(s.sarta));
+  if (filters.mina.length) {
+    const sm = sartaMinasPorHerramienta(bundle);
+    tot = tot.filter(s => (sm[s.sarta] || []).some(m => filters.mina.includes(m)));
+  }
+  tot = tot.filter(s => s.months.length);
+  if (!tot.length) return null;
+  const piezas = new Map(cpmPorSarta(bundle, life).map(s => [s.sarta, s.referencias.reduce((a, r) => a + r.months.reduce((x, m) => x + (m.n || 0), 0), 0)]));
+  tot.sort((a, b) => (piezas.get(b.sarta) || 0) - (piezas.get(a.sarta) || 0));
+  const s = tot[0];
+  const usar = s.months; // los mismos meses que dibuja la gráfica «CPM por sarta»
+  return { sarta: s.sarta, cpm: usar.reduce((a, m) => a + m.cpmSarta, 0) / usar.length, meses: usar.length, desde: usar[0].ym, hasta: usar[usar.length - 1].ym,
+    ideal: s.cpmIdeal, otras: tot.length - 1, incompletos: usar.filter(m => m.refsConDatos < m.refsTotal).length };
+}
+
 function renderCPM(bundle, life) {
   const g = cpmGlobal(bundle, life);
   const rows = cpmPorHerramienta(bundle, life);
@@ -3966,9 +4024,14 @@ function renderCPM(bundle, life) {
     const diff = (g.cpmReal / gHist.cpmReal - 1) * 100;
     cpmRealSub += ` · ${diff >= 0 ? '+' : ''}${diff.toFixed(1)}% vs. histórico (USD ${gHist.cpmReal.toFixed(3)})`;
   }
+  const sp = sartaPrincipalCpm(bundle, life);
+  const spSub = sp
+    ? `Sarta ${sp.sarta} · promedio de los ${sp.meses} mes${sp.meses === 1 ? '' : 'es'} de la gráfica (${ymLabel(sp.desde)}${sp.desde === sp.hasta ? '' : ' – ' + ymLabel(sp.hasta)})${sp.ideal != null ? ` · ideal USD ${sp.ideal.toFixed(2)}` : ''}${sp.incompletos ? ` · ${sp.incompletos} mes${sp.incompletos === 1 ? '' : 'es'} sin datos de alguna herramienta` : ''}${sp.otras ? ` · ${sp.otras} sarta${sp.otras === 1 ? '' : 's'} más en el detalle de abajo` : ''}`
+    : 'Sin piezas dadas de baja suficientes para calcular el CPM de una sarta con los filtros actuales';
   const cards = [
-    { label: 'CPM real', value: (g.cpmReal !== null ? 'USD ' + g.cpmReal.toFixed(3) : '—') + ' <small>/m</small>', sub: cpmRealSub },
-    { label: 'CPM ideal', value: (cpmIdealFicha !== null ? 'USD ' + cpmIdealFicha.toFixed(3) : '—') + ' <small>/m</small>', sub: cpmIdealSub },
+    { label: 'CPM real de la sarta', value: (sp ? 'USD ' + sp.cpm.toFixed(3) : '—') + ' <small>/m</small>', sub: spSub },
+    { label: 'CPM real por herramienta', value: (g.cpmReal !== null ? 'USD ' + g.cpmReal.toFixed(3) : '—') + ' <small>/m</small>', sub: cpmRealSub + ' · cada herramienta por separado' },
+    { label: sartaIdeal != null ? 'CPM ideal de la sarta' : 'CPM ideal por herramienta', value: (cpmIdealFicha !== null ? 'USD ' + cpmIdealFicha.toFixed(3) : '—') + ' <small>/m</small>', sub: cpmIdealSub },
     { label: 'USD invertido', value: 'USD ' + fmtNum(Math.round(g.usdGastado)), sub: `${fmtNum(g.nConUsd)} piezas con precio registrado` },
     { label: 'Sobrecosto por bajo rendimiento', value: 'USD ' + fmtNum(Math.round(g.sobrecostoUSD)), sub: 'Piezas que no llegaron a su metro garantizado' },
   ];
@@ -4101,10 +4164,12 @@ function renderGananciaPerdida(bundle, life) {
   const totalPerdida = rows.reduce((a, r) => a + r.perdidaUSD, 0);
   const totalGanancia = rows.reduce((a, r) => a + r.gananciaUSD, 0);
   kpiRow.innerHTML = '';
+  const netoNegativo = rows.filter(r => r.netoUSD < 0).reduce((a, r) => a + r.netoUSD, 0);
   [
-    { label: 'Pérdida total (< 85%)', value: 'USD ' + fmtNum(Math.round(totalPerdida)), sub: 'Piezas bajo el rango aceptable', accentCls: 'kpi-bad' },
-    { label: 'Ganancia total (> 100%)', value: 'USD ' + fmtNum(Math.round(totalGanancia)), sub: 'Piezas que superaron el metro ideal', accentCls: 'kpi-good' },
-    { label: 'Neto', value: 'USD ' + fmtNum(Math.round(totalGanancia - totalPerdida)), sub: 'Ganancia menos pérdida', accentCls: (totalGanancia - totalPerdida) >= 0 ? 'kpi-good' : 'kpi-bad' },
+    { label: 'Pérdida total (< 85%)', value: 'USD ' + fmtNum(Math.round(totalPerdida)), sub: 'Piezas dadas de baja bajo el rango aceptable (suma bruta)', accentCls: 'kpi-bad' },
+    { label: 'Ganancia total (> 100%)', value: 'USD ' + fmtNum(Math.round(totalGanancia)), sub: 'Piezas dadas de baja que superaron el metro ideal', accentCls: 'kpi-good' },
+    { label: 'Neto', value: 'USD ' + fmtNum(Math.round(totalGanancia - totalPerdida)), sub: 'Ganancia menos pérdida de todas las herramientas', accentCls: (totalGanancia - totalPerdida) >= 0 ? 'kpi-good' : 'kpi-bad' },
+    { label: 'Herramientas con neto negativo', value: 'USD ' + fmtNum(Math.round(netoNegativo)), sub: 'Suma del neto de las herramientas donde la pérdida supera la ganancia', accentCls: netoNegativo < 0 ? 'kpi-bad' : 'kpi-good' },
   ].forEach(c => kpiRow.appendChild(el(`<div class="card kpi ${c.accentCls}"><div class="label">${esc(c.label)}</div><div class="value">${c.value}</div><div class="sub">${esc(c.sub)}</div></div>`)));
 
   const table = document.getElementById('gpTable');
@@ -4480,7 +4545,7 @@ function renderAll() {
   const { prod, life } = applyFilters(BUNDLE, filters);
   currentProd = prod; currentLife = life;
   const kpis = kpiTotals(BUNDLE, prod, life);
-  renderKPICards(kpis, vidaUtilGlobal(BUNDLE, life));
+  renderKPICards(kpis, vidaUtilGlobal(BUNDLE, life), life.filter(l => BUNDLE.dict.estado[l[5]] === 'ACTIVO').length);
   renderMonthlyChart(kpis);
   renderActiveToolsChart(kpis);
   renderToolsChart(byHerramientaProd(BUNDLE, prod, null));
@@ -5059,10 +5124,21 @@ function renderPerfTable() {
 // Las 3 minas son sub-sitios de la operación de Segovia (ver MINES), la única
 // operación de la plataforma.
 const MINAS_SEGOVIA = ['SANDRA K', 'EL SILENCIO', 'PROVIDENCIA'];
-const TIPOS_PERFORACION = ['AVANCE', 'ESCARIADO', 'SOSTENIMIENTO', 'ESCAREADORA'];
-let dailyReportState = { fecha: '', mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null, bajaBand: '', bajaMina: '', bajaEquipo: '', bajaSearch: '', showAll: false };
-const CAUSAS_DESCARTE = ['GEOLOGIA', 'DAÑO OPERACIONAL', 'CONDICION MECANICA', 'DESGASTE', 'SERVICIOS MINA', 'PARAMETROS DE PERFORACION', 'ROSCA INCRUSTADA', 'SIN ESPECIFICAR'];
-const MODOS_FALLA = ['ROTURA DEL CUERPO', 'ROTURA ROSCA T38', 'ROTURA ROSCA R32', 'ROTURA ROSCA R28', 'DESGASTE ROSCA T38', 'DESGASTE ROSCA R32', 'ROSCA INCRUSTADA', 'PERDIDA DE BOTON', 'ROTURA DE BOTON', 'PERDIDA EN TERRENO', 'OP/SIN ESPECIFICAR'];
+const TIPOS_PERFORACION = ['AVANCE', 'ESCARIADO', 'SOSTENIMIENTO'];
+let dailyReportState = { fecha: '', mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null, bajaBand: '', bajaMina: '', bajaEquipo: '', bajaSearch: '', showAll: false, brRows: null, brSel: null, brSearch: '', brMina: '', brFiltro: 'todas' };
+// Listas completas: la hoja MODO-CAUSA del Excel oficial más los valores que ya trae la base (FIN DE VIDA ÚTIL, etc.).
+const CAUSAS_DESCARTE = ['ATASCAMIENTO EN FRENTE DE TRABAJO', 'CONDICION MECANICA', 'DAÑO OPERACIONAL', 'DAÑO POR EXTRACCION FORZADA', 'DESGASTE', 'FIN DE VIDA ÚTIL',
+  'FRENTE CON TRATAMIENTOS ANTERIORES', 'GEOLOGIA', 'PARAMETROS DE PERFORACION', 'PERFORACION SUB ESTANDAR', 'RE PERFORACION', 'ROSCA INCRUSTADA',
+  'SE BAJA CON LA PERFORADORA EN MANTENIMIENTO', 'SERVICIOS MINA', 'SIN ESPECIFICAR'];
+const MODOS_FALLA = ['CORROSION', 'DESGASTE DE BOTON', 'DESGASTE DE CUERPO', 'DESGASTE DIAMETRAL', 'DESGASTE ROSCA R25', 'DESGASTE ROSCA R28', 'DESGASTE ROSCA R32', 'DESGASTE ROSCA R38',
+  'DESGASTE ROSCA T38', 'DESGASTE ROSCA T45', 'DESGASTE ROSCA T51', 'DOBLADA', 'FIN DE VIDA ÚTIL', 'FISURA', 'PERDIDA DE BOTON', 'PERDIDA EN TERRENO', 'ROSCA INCRUSTADA', 'ROTURA DE BOTON',
+  'ROTURA DE CUERPO', 'ROTURA DEL CUERPO', 'ROTURA ROSCA R25', 'ROTURA ROSCA R28', 'ROTURA ROSCA R32', 'ROTURA ROSCA R38', 'ROTURA ROSCA T38', 'ROTURA ROSCA T45', 'ROTURA ROSCA T51',
+  'TAPADA', 'OP/SIN ESPECIFICAR'];
+const bucketDeCausa = (causa) => causa === 'FIN DE VIDA ÚTIL' ? 'FIN_VIDA_UTIL' : 'CONDICION_OPERATIVA';
+function opcionesSel(lista, actual) {
+  const l = actual && !lista.includes(actual) ? lista.concat([actual]) : lista;
+  return '<option value="">Selecciona…</option>' + l.map(x => `<option value="${esc(x)}" ${x === actual ? 'selected' : ''}>${esc(x)}</option>`).join('');
+}
 
 function fmtFechaLarga(fechaStr) {
   if (!fechaStr) return '';
@@ -5074,7 +5150,7 @@ async function enterDigitalizadorScreen() {
   document.getElementById('dailyReportUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
   document.getElementById('dailyReportHomeBtn').hidden = currentUser.role !== 'admin';
   const today = new Date().toISOString().slice(0, 10);
-  dailyReportState = { fecha: today, mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null, bajaBand: '', bajaMina: '', bajaEquipo: '', bajaSearch: '', showAll: false };
+  dailyReportState = { fecha: today, mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null, bajaBand: '', bajaMina: '', bajaEquipo: '', bajaSearch: '', showAll: false, brRows: null, brSel: null, brSearch: '', brMina: '', brFiltro: 'todas' };
 
   const fechaInput = document.getElementById('drFecha');
   fechaInput.value = today;
@@ -5088,14 +5164,20 @@ async function enterDigitalizadorScreen() {
 
   document.getElementById('bajaFecha').value = today;
   document.getElementById('bajaFecha').max = today;
-  document.getElementById('bajaCausa').innerHTML = '<option value="">Selecciona…</option>' + CAUSAS_DESCARTE.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
-  document.getElementById('bajaFalla').innerHTML = '<option value="">Selecciona…</option>' + MODOS_FALLA.map(f => `<option value="${esc(f)}">${esc(f)}</option>`).join('');
+  document.getElementById('bajaCausa').innerHTML = opcionesSel(CAUSAS_DESCARTE);
+  document.getElementById('bajaFalla').innerHTML = opcionesSel(MODOS_FALLA);
   document.getElementById('bajaSearch').value = '';
   document.getElementById('bajaFormCard').hidden = true;
   document.getElementById('bajaSuccess').hidden = true;
   document.getElementById('drShowAll').checked = false;
+  document.getElementById('brFormCard').hidden = true;
+  document.getElementById('brSuccess').hidden = true;
+  document.getElementById('brCausa').innerHTML = opcionesSel(CAUSAS_DESCARTE);
+  document.getElementById('brFalla').innerHTML = opcionesSel(MODOS_FALLA);
 
   wireDailyReportEvents();
+  cargarOperadoresSugeridos();
+  cargarBajasRegistradas();
   loadBajaTools().then(renderBajaList).catch(() => {
     const note = document.getElementById('bajaEmptyNote'); note.hidden = false; note.textContent = 'No se pudo cargar la lista de herramientas activas.';
   });
@@ -5122,7 +5204,7 @@ function wireDailyReportEvents() {
   const equipoSel = document.getElementById('drEquipo');
   if (!equipoSel.dataset.wired) {
     equipoSel.dataset.wired = '1';
-    equipoSel.addEventListener('change', (e) => { dailyReportState.equipo = e.target.value; renderDrRows(true); prefillFromLastReport(); });
+    equipoSel.addEventListener('change', (e) => { dailyReportState.equipo = e.target.value; renderDrRows(true); prefillFromLastReport(); cargarOperadoresSugeridos(); });
   }
   const tipoSel = document.getElementById('drTipo');
   if (!tipoSel.dataset.wired) {
@@ -5163,14 +5245,22 @@ function wireDailyReportEvents() {
   }
   const bajaResultsBody = document.getElementById('bajaResultsBody');
   if (!bajaResultsBody.dataset.wired) { bajaResultsBody.dataset.wired = '1'; bajaResultsBody.addEventListener('click', handleSelectBajaTool); }
-  const bajaModo = document.getElementById('bajaModo');
-  if (!bajaModo.dataset.wired) {
-    bajaModo.dataset.wired = '1';
-    bajaModo.addEventListener('change', (e) => {
-      const isFalla = e.target.value === 'falla';
-      document.getElementById('bajaCausaGroup').hidden = !isFalla;
-      document.getElementById('bajaFallaGroup').hidden = !isFalla;
-    });
+  const bajaCausa = document.getElementById('bajaCausa');
+  if (!bajaCausa.dataset.wired) {
+    bajaCausa.dataset.wired = '1';
+    // si la causa es fin de vida útil y el modo está vacío, se propone el mismo valor (se puede cambiar)
+    bajaCausa.addEventListener('change', (e) => { const f = document.getElementById('bajaFalla'); if (e.target.value === 'FIN DE VIDA ÚTIL' && !f.value) f.value = 'FIN DE VIDA ÚTIL'; });
+  }
+  const brSearch = document.getElementById('brSearch');
+  if (!brSearch.dataset.wired) {
+    brSearch.dataset.wired = '1';
+    brSearch.addEventListener('input', (e) => { dailyReportState.brSearch = e.target.value; renderBajasRegistradas(); });
+    document.getElementById('brMina').addEventListener('change', (e) => { dailyReportState.brMina = e.target.value; renderBajasRegistradas(); });
+    document.getElementById('brFiltro').addEventListener('change', (e) => { dailyReportState.brFiltro = e.target.value; renderBajasRegistradas(); });
+    document.getElementById('brBody').addEventListener('click', (e) => { const b = e.target.closest('.br-edit-btn'); if (b) abrirCorreccionBaja(b.dataset.codigo); });
+    document.getElementById('brCancelBtn').addEventListener('click', cerrarCorreccionBaja);
+    document.getElementById('brSaveBtn').addEventListener('click', guardarCorreccionBaja);
+    document.getElementById('brReactivarBtn').addEventListener('click', reactivarBaja);
   }
   const bajaCancelBtn = document.getElementById('bajaCancelBtn');
   if (!bajaCancelBtn.dataset.wired) { bajaCancelBtn.dataset.wired = '1'; bajaCancelBtn.addEventListener('click', closeBajaForm); }
@@ -5232,9 +5322,6 @@ function handleSelectBajaTool(e) {
   if (!tool) return;
   dailyReportState.bajaSelected = tool;
   document.getElementById('bajaFormTitle').textContent = `Dar de baja — ${tool.herramienta || tool.codigo_marcado} (${tool.codigo_marcado})`;
-  document.getElementById('bajaModo').value = 'fin_vida';
-  document.getElementById('bajaCausaGroup').hidden = true;
-  document.getElementById('bajaFallaGroup').hidden = true;
   document.getElementById('bajaCausa').value = '';
   document.getElementById('bajaFalla').value = '';
   document.getElementById('bajaError').hidden = true;
@@ -5254,11 +5341,10 @@ async function handleConfirmBaja() {
   errEl.hidden = true;
   if (!tool) return;
   const fecha = document.getElementById('bajaFecha').value;
-  const modo = document.getElementById('bajaModo').value;
   const causa = document.getElementById('bajaCausa').value;
   const falla = document.getElementById('bajaFalla').value;
   if (!fecha) { errEl.hidden = false; errEl.textContent = 'Elige la fecha de baja.'; return; }
-  if (modo === 'falla' && (!causa || !falla)) { errEl.hidden = false; errEl.textContent = 'Elige la causa de descarte y el modo de falla.'; return; }
+  if (!causa || !falla) { errEl.hidden = false; errEl.textContent = 'Elige la causa de descarte y el modo de falla: son obligatorios en toda baja.'; return; }
   if (!confirm(`¿Dar de baja "${tool.herramienta || tool.codigo_marcado}" (${tool.codigo_marcado})? Ya no aparecerá en el reporte diario.`)) return;
 
   const confirmBtn = document.getElementById('bajaConfirmBtn');
@@ -5266,9 +5352,8 @@ async function handleConfirmBaja() {
   try {
     await CTAuth.updateMatch('piezas', { codigo_marcado: tool.codigo_marcado }, {
       estado: 'INACTIVO',
-      motivo_bucket: modo === 'falla' ? 'CONDICION_OPERATIVA' : 'FIN_VIDA_UTIL',
-      causa: modo === 'falla' ? causa : null,
-      falla: modo === 'falla' ? falla : null,
+      motivo_bucket: bucketDeCausa(causa),
+      causa, falla,
       fecha_final: fecha,
     });
     dailyReportState.bajaTools = dailyReportState.bajaTools.filter(r => r.codigo_marcado !== tool.codigo_marcado);
@@ -5278,6 +5363,7 @@ async function handleConfirmBaja() {
     }
     closeBajaForm();
     renderBajaList();
+    cargarBajasRegistradas();
     const okEl = document.getElementById('bajaSuccess');
     okEl.hidden = false;
     okEl.textContent = `"${tool.codigo_marcado}" dada de baja el ${fmtFechaLarga(fecha)}.`;
@@ -5288,10 +5374,94 @@ async function handleConfirmBaja() {
   }
 }
 
+// ============ bajas registradas: corregir causa, modo o fecha, o deshacer la baja ============
+async function cargarBajasRegistradas() {
+  try {
+    const todas = await CTAuth.fetchTable('piezas');
+    dailyReportState.brRows = todas.filter(r => r.estado === 'INACTIVO');
+  } catch (e) { dailyReportState.brRows = []; }
+  renderBajasRegistradas();
+}
+function renderBajasRegistradas() {
+  const st = dailyReportState, rows = st.brRows || [];
+  const minaSel = document.getElementById('brMina');
+  const minas = Array.from(new Set(rows.map(r => r.mina).filter(Boolean))).sort();
+  minaSel.innerHTML = '<option value="">Todas</option>' + minas.map(m => `<option value="${esc(m)}" ${st.brMina === m ? 'selected' : ''}>${esc(m)}</option>`).join('');
+  const q = (st.brSearch || '').trim().toLowerCase();
+  const sinDatos = (r) => !r.causa || !r.falla;
+  const base = rows.filter(r => (!st.brMina || r.mina === st.brMina)
+    && (!q || [r.codigo_marcado, r.ref_code, r.herramienta, r.causa, r.falla].some(v => String(v || '').toLowerCase().includes(q))));
+  const lista = base.filter(r => st.brFiltro === 'sin' ? sinDatos(r) : st.brFiltro === 'con' ? !sinDatos(r) : true)
+    .sort((a, b) => String(b.fecha_final || '').localeCompare(String(a.fecha_final || '')) || String(a.codigo_marcado).localeCompare(String(b.codigo_marcado), 'es', { numeric: true }));
+  const MAX = 250;
+  document.getElementById('brResumen').textContent = `${fmtNum(base.length)} bajas con los filtros · ${fmtNum(base.filter(sinDatos).length)} sin causa o modo · mostrando ${fmtNum(Math.min(lista.length, MAX))}${lista.length > MAX ? ' (usa Buscar o los filtros para ver el resto)' : ''}.`;
+  document.getElementById('brBody').innerHTML = lista.slice(0, MAX).map(r => `<tr>
+    <td><b>${esc(r.codigo_marcado)}</b></td><td>${esc(r.herramienta || r.ref_code || '—')}</td><td>${esc(r.mina || '—')}</td><td>${esc(r.equipo || '—')}</td>
+    <td>${esc(r.fecha_final || '—')}</td>
+    <td>${r.causa ? esc(r.causa) : '<span class="pill muted">sin causa</span>'}</td><td>${r.falla ? esc(r.falla) : '<span class="pill muted">sin modo</span>'}</td>
+    <td><button type="button" class="small ghost br-edit-btn" data-codigo="${esc(r.codigo_marcado)}">Corregir</button></td>
+  </tr>`).join('') || '<tr><td colspan="8" class="empty-note">No hay bajas con estos filtros.</td></tr>';
+}
+function abrirCorreccionBaja(codigo) {
+  const r = (dailyReportState.brRows || []).find(x => x.codigo_marcado === codigo);
+  if (!r) return;
+  dailyReportState.brSel = r;
+  document.getElementById('brFormTitle').textContent = `Corregir baja — ${r.herramienta || r.codigo_marcado} (${r.codigo_marcado})`;
+  document.getElementById('brFecha').value = r.fecha_final || '';
+  document.getElementById('brCausa').innerHTML = opcionesSel(CAUSAS_DESCARTE, r.causa);
+  document.getElementById('brFalla').innerHTML = opcionesSel(MODOS_FALLA, r.falla);
+  document.getElementById('brError').hidden = true;
+  document.getElementById('brSuccess').hidden = true;
+  const card = document.getElementById('brFormCard');
+  card.hidden = false;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function cerrarCorreccionBaja() { dailyReportState.brSel = null; document.getElementById('brFormCard').hidden = true; }
+async function guardarCorreccionBaja() {
+  const r = dailyReportState.brSel, errEl = document.getElementById('brError');
+  errEl.hidden = true;
+  if (!r) return;
+  const fecha = document.getElementById('brFecha').value, causa = document.getElementById('brCausa').value, falla = document.getElementById('brFalla').value;
+  if (!fecha) { errEl.hidden = false; errEl.textContent = 'Elige la fecha de baja.'; return; }
+  if (!causa || !falla) { errEl.hidden = false; errEl.textContent = 'Elige la causa de descarte y el modo de falla.'; return; }
+  const btn = document.getElementById('brSaveBtn');
+  btn.disabled = true;
+  try {
+    const patch = { fecha_final: fecha, causa, falla, motivo_bucket: bucketDeCausa(causa) };
+    await CTAuth.updateMatch('piezas', { codigo_marcado: r.codigo_marcado }, patch);
+    Object.assign(r, patch);
+    cerrarCorreccionBaja();
+    renderBajasRegistradas();
+    const ok = document.getElementById('brSuccess'); ok.hidden = false; ok.textContent = `Baja de "${r.codigo_marcado}" corregida.`;
+  } catch (e) {
+    errEl.hidden = false; errEl.textContent = 'No se pudo guardar (' + e.message + ').';
+  } finally { btn.disabled = false; }
+}
+async function reactivarBaja() {
+  const r = dailyReportState.brSel, errEl = document.getElementById('brError');
+  errEl.hidden = true;
+  if (!r) return;
+  if (!confirm(`¿Deshacer la baja de "${r.codigo_marcado}"? Vuelve a quedar activa, sin fecha de baja, causa ni modo de falla.`)) return;
+  const btn = document.getElementById('brReactivarBtn');
+  btn.disabled = true;
+  try {
+    await CTAuth.updateMatch('piezas', { codigo_marcado: r.codigo_marcado }, { estado: 'ACTIVO', fecha_final: null, causa: null, falla: null, motivo_bucket: null });
+    dailyReportState.brRows = dailyReportState.brRows.filter(x => x.codigo_marcado !== r.codigo_marcado);
+    cerrarCorreccionBaja();
+    renderBajasRegistradas();
+    await loadBajaTools(); renderBajaList();
+    if (dailyReportState.mina) { dailyReportState.activeTools = await CTAuth.fetchMatch('piezas', { mina: dailyReportState.mina, estado: 'ACTIVO' }); drRerenderKeepingValues(); }
+    const ok = document.getElementById('brSuccess'); ok.hidden = false; ok.textContent = `La baja de "${r.codigo_marcado}" se deshizo: la herramienta volvió a quedar activa.`;
+  } catch (e) {
+    errEl.hidden = false; errEl.textContent = 'No se pudo deshacer la baja (' + e.message + ').';
+  } finally { btn.disabled = false; }
+}
+
 async function onDailyMinaChange(mina) {
   dailyReportState.mina = mina;
   dailyReportState.equipo = '';
   dailyReportState.activeTools = [];
+  cargarOperadoresSugeridos();
   const equipoSel = document.getElementById('drEquipo');
   if (!mina) {
     equipoSel.innerHTML = '<option value="">Selecciona una mina primero</option>';
@@ -5355,6 +5525,13 @@ function drSlotOptions(slot, tools, selected) {
   if (sinClasif.length) h += `<optgroup label="Sin clasificar">${sinClasif.map(opt).join('')}</optgroup>`;
   if (dailyReportState.showAll && otras.length) h += `<optgroup label="Otras categorías">${otras.map(opt).join('')}</optgroup>`;
   else if (selected) { const s = otras.find(t => t.codigo_marcado === selected); if (s) h += `<optgroup label="Elegida">${opt(s)}</optgroup>`; }
+  // Herramientas de la misma mina que están registradas en otro equipo: al guardar el reporte pasan a este equipo.
+  if (dailyReportState.showAll) {
+    const optOtro = (t) => `<option value="${esc(t.codigo_marcado)}" ${t.codigo_marcado === selected ? 'selected' : ''}>${esc(t.codigo_marcado)} · ${esc(t.herramienta || t.ref_code || '')} — hoy en ${esc(t.equipo || 'sin equipo')}</option>`;
+    const deOtros = dailyReportState.activeTools.filter(t => t.equipo !== dailyReportState.equipo && cat(t) === slot.cat)
+      .sort((a, b) => String(a.codigo_marcado).localeCompare(String(b.codigo_marcado), 'es', { numeric: true }));
+    if (deOtros.length) h += `<optgroup label="De otros equipos de la mina (pasan a este equipo al guardar)">${deOtros.map(optOtro).join('')}</optgroup>`;
+  }
   return h;
 }
 function drRowHtml(vals) {
@@ -5433,6 +5610,37 @@ async function prefillFromLastReport() {
   } catch (e) { /* si no se puede consultar el último reporte, la fila queda en blanco */ }
 }
 
+// Lista desplegable de operadores: primero los que ya reportaron en este equipo (con su número de reportes), luego los demás.
+async function cargarOperadoresSugeridos() {
+  const { mina, equipo } = dailyReportState;
+  const dl = document.getElementById('drOperadoresList');
+  const norm = (s) => String(s || '').trim().replace(/\s+/g, ' ').toUpperCase();
+  const todos = new Set();
+  const hist = new Map();
+  const b = DEFAULT_BUNDLE, d = b.dict;
+  (d.operador || []).forEach(o => { if (norm(o)) todos.add(norm(o)); });
+  if (mina && equipo) {
+    const minaIdx = d.mina.indexOf(mina), equipoIdx = d.equipo.indexOf(equipo);
+    if (minaIdx >= 0 && equipoIdx >= 0) {
+      for (const p of b.prod) {
+        if (p[8] === 0 || p[1] !== minaIdx || p[3] !== equipoIdx || p[9] === null || p[9] === undefined) continue;
+        const o = norm(d.operador[p[9]]); if (o) hist.set(o, (hist.get(o) || 0) + 1);
+      }
+    }
+    try {
+      // reportes recientes guardados en la plataforma (pueden traer operadores nuevos)
+      const recientes = await CTAuth.fetchLast('produccion', { mina, equipo }, 400);
+      const nuevos = new Map();
+      recientes.forEach(r => { [r.operador, r.operador2].forEach(o => { o = norm(o); if (o && !todos.has(o)) nuevos.set(o, (nuevos.get(o) || 0) + 1); }); });
+      nuevos.forEach((n, o) => { hist.set(o, n); todos.add(o); });
+    } catch (e) { /* sin conexión a los reportes recientes: quedan los del historial */ }
+  }
+  if (dailyReportState.mina !== mina || dailyReportState.equipo !== equipo) return;
+  const conHist = Array.from(hist.entries()).sort((x, y) => y[1] - x[1]);
+  const otros = Array.from(todos).filter(o => !hist.has(o)).sort((x, y) => x.localeCompare(y, 'es'));
+  dl.innerHTML = conHist.map(([o, n]) => `<option value="${esc(o)}" label="${n} reporte${n === 1 ? '' : 's'} en ${esc(equipo)}"></option>`).join('') + otros.map(o => `<option value="${esc(o)}"></option>`).join('');
+}
+
 function addDrRow() {
   const body = document.getElementById('drRowsBody');
   const rows = drReadRows();
@@ -5498,6 +5706,9 @@ async function saveDailyReport() {
   try {
     await CTAuth.insertRows('produccion', entries);
     for (const codigo of new Set(entries.map(e => e.codigo_marcado))) {
+      // la herramienta queda en la mina y el equipo donde se está reportando
+      const pz = byCodigo.get(codigo);
+      if (pz && (pz.mina !== mina || pz.equipo !== equipo)) await CTAuth.updateMatch('piezas', { codigo_marcado: codigo }, { mina, equipo });
       await refreshPiezaMetros(codigo);
     }
     dailyReportState.activeTools = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
@@ -5594,9 +5805,18 @@ async function enterToolsScreen() {
   document.getElementById('despachoMina').innerHTML = '<option value="">Selecciona…</option>' + minaOptions;
 
   toolsState.catalog = await CTAuth.fetchTable('catalog_refs');
-  toolsState.catalog.sort((a, b) => (a.ref_code || '').localeCompare(b.ref_code || ''));
+  // Referencias: el catálogo (con precio y metro garantizado) más las que ya usan las piezas pero el catálogo todavía no trae (p. ej. barras cónicas).
+  let piezasTodas = [];
+  try { piezasTodas = await CTAuth.fetchTable('piezas'); } catch (e) { /* sin piezas: solo el catálogo */ }
+  const enCat = new Set(toolsState.catalog.map(c => c.ref_code));
+  const extra = new Map();
+  piezasTodas.forEach(p => { if (p.ref_code && !enCat.has(p.ref_code) && !extra.has(p.ref_code)) extra.set(p.ref_code, { ref_code: p.ref_code, descripcion: p.herramienta || null, precio: null, metro_garantizado: null, sinCatalogo: true }); });
+  toolsState.refs = toolsState.catalog.concat(Array.from(extra.values())).sort((a, b) => (a.ref_code || '').localeCompare(b.ref_code || ''));
   document.getElementById('altaReferencia').innerHTML = '<option value="">Selecciona…</option>' +
-    toolsState.catalog.map(c => `<option value="${esc(c.ref_code)}">${esc(c.ref_code)}${c.descripcion ? ' — ' + esc(c.descripcion) : ''}</option>`).join('');
+    toolsState.refs.map(c => `<option value="${esc(c.ref_code)}">${esc(c.ref_code)}${c.descripcion ? ' — ' + esc(c.descripcion) : ''}${c.sinCatalogo ? ' (sin precio ni garantizado en el catálogo)' : ''}</option>`).join('');
+  document.getElementById('altaVarios').checked = false;
+  document.getElementById('altaVariosGroup').hidden = true; document.getElementById('altaUnoGroup').hidden = false;
+  document.getElementById('altaCodigos').value = '';
 
   wireToolsEvents();
   await renderReservaList();
@@ -5619,6 +5839,16 @@ function wireToolsEvents() {
       const equipoInput = document.getElementById('altaEquipo');
       equipoInput.disabled = !e.target.value;
       if (!e.target.value) equipoInput.value = '';
+    });
+  }
+  const altaVarios = document.getElementById('altaVarios');
+  if (!altaVarios.dataset.wired) {
+    altaVarios.dataset.wired = '1';
+    altaVarios.addEventListener('change', (e) => { document.getElementById('altaVariosGroup').hidden = !e.target.checked; document.getElementById('altaUnoGroup').hidden = e.target.checked; });
+    document.getElementById('bodegaRegistrarBtn').addEventListener('click', () => {
+      document.getElementById('altaMina').value = ''; document.getElementById('altaEquipo').value = ''; document.getElementById('altaEquipo').disabled = true;
+      document.getElementById('altaCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => (document.getElementById('altaVarios').checked ? document.getElementById('altaCodigos') : document.getElementById('altaCodigo')).focus(), 350);
     });
   }
   const altaSaveBtn = document.getElementById('altaSaveBtn');
@@ -5648,13 +5878,16 @@ async function handleRegistrarCodigo() {
   const errEl = document.getElementById('altaError'); errEl.hidden = true;
   const okEl = document.getElementById('altaSuccess'); okEl.hidden = true;
 
-  const codigo = document.getElementById('altaCodigo').value.trim().toUpperCase();
+  const varios = document.getElementById('altaVarios').checked;
+  const crudo = varios ? document.getElementById('altaCodigos').value : document.getElementById('altaCodigo').value;
+  const codigos = Array.from(new Set(crudo.split(varios ? /[\s,;]+/ : /\s+/).map(c => c.trim().toUpperCase()).filter(Boolean)));
   const refCode = document.getElementById('altaReferencia').value;
   const fecha = document.getElementById('altaFecha').value;
   const mina = document.getElementById('altaMina').value;
   const equipo = document.getElementById('altaEquipo').value.trim().toUpperCase();
 
-  if (!codigo) { errEl.hidden = false; errEl.textContent = 'Escribe el código de marcado.'; return; }
+  if (!codigos.length) { errEl.hidden = false; errEl.textContent = varios ? 'Escribe al menos un código.' : 'Escribe el código de marcado.'; return; }
+  if (!varios && codigos.length > 1) { errEl.hidden = false; errEl.textContent = 'Para registrar varios códigos activa «Registrar varios códigos a la vez».'; return; }
   if (!refCode) { errEl.hidden = false; errEl.textContent = 'Elige la referencia.'; return; }
   if (!fecha) { errEl.hidden = false; errEl.textContent = 'Elige la fecha de entrega.'; return; }
   if (mina && !equipo) { errEl.hidden = false; errEl.textContent = 'Escribe el equipo al que se despacha.'; return; }
@@ -5662,31 +5895,36 @@ async function handleRegistrarCodigo() {
   const saveBtn = document.getElementById('altaSaveBtn');
   saveBtn.disabled = true; saveBtn.textContent = 'Registrando…';
   try {
-    const existing = await CTAuth.fetchMatch('piezas', { codigo_marcado: codigo });
-    if (existing.length) { errEl.hidden = false; errEl.textContent = `El código "${codigo}" ya existe (mina: ${existing[0].mina || 'en bodega'}).`; return; }
-
-    const ref = toolsState.catalog.find(c => c.ref_code === refCode);
-    await CTAuth.insertRows('piezas', [{
+    const existentes = new Map((await CTAuth.fetchTable('piezas')).map(p => [p.codigo_marcado, p]));
+    const nuevos = codigos.filter(c => !existentes.has(c)), repetidos = codigos.filter(c => existentes.has(c));
+    if (!nuevos.length) {
+      errEl.hidden = false;
+      errEl.textContent = codigos.length === 1 ? `El código "${codigos[0]}" ya existe (mina: ${existentes.get(codigos[0]).mina || 'en bodega'}).` : `Todos los códigos ya existen: ${repetidos.slice(0, 12).join(', ')}${repetidos.length > 12 ? '…' : ''}.`;
+      return;
+    }
+    const ref = (toolsState.refs || toolsState.catalog).find(c => c.ref_code === refCode);
+    await CTAuth.insertRows('piezas', nuevos.map(codigo => ({
       codigo_marcado: codigo, ref_code: refCode, herramienta: ref ? ref.descripcion : null,
       metros_perforados: 0, metro_garantizado: ref ? ref.metro_garantizado : null,
       estado: mina ? 'ACTIVO' : 'RESERVA',
       mina: mina || null, equipo: mina ? equipo : null,
       fecha_inicio: mina ? fecha : null,
       precio_usd: ref ? ref.precio : null,
-    }]);
+    })));
 
     okEl.hidden = false;
-    okEl.textContent = mina
-      ? `Código "${codigo}" registrado y despachado a ${mina} (${equipo}).`
-      : `Código "${codigo}" registrado en bodega.`;
+    const destino = mina ? `despachado${nuevos.length === 1 ? '' : 's'} a ${mina} (${equipo})` : 'en bodega';
+    okEl.textContent = (nuevos.length === 1 ? `Código "${nuevos[0]}" registrado ${destino}.` : `${nuevos.length} códigos registrados ${destino}.`)
+      + (repetidos.length ? ` No se registraron por existir ya: ${repetidos.slice(0, 12).join(', ')}${repetidos.length > 12 ? '…' : ''}.` : '');
     document.getElementById('altaCodigo').value = '';
+    document.getElementById('altaCodigos').value = '';
     document.getElementById('altaReferencia').value = '';
     document.getElementById('altaMina').value = '';
     document.getElementById('altaEquipo').value = '';
     document.getElementById('altaEquipo').disabled = true;
     await renderReservaList();
   } catch (e) {
-    errEl.hidden = false; errEl.textContent = 'No se pudo registrar el código (' + e.message + ').';
+    errEl.hidden = false; errEl.textContent = 'No se pudo registrar (' + e.message + ').';
   } finally {
     saveBtn.disabled = false; saveBtn.textContent = 'Registrar';
   }
@@ -6113,8 +6351,9 @@ const DATA_TABLES = {
     cols: [
       { k: 'codigo_marcado', label: 'Código', ro: true }, { k: 'ref_code', label: 'Referencia' }, { k: 'herramienta', label: 'Herramienta' },
       { k: 'metros_perforados', label: 'Metros acumulados', t: 'num' }, { k: 'metro_garantizado', label: 'Metro garantizado', t: 'num' },
-      { k: 'estado', label: 'Estado' }, { k: 'motivo_bucket', label: 'Motivo de baja' }, { k: 'causa', label: 'Causa' }, { k: 'falla', label: 'Modo de falla' },
-      { k: 'mina', label: 'Mina' }, { k: 'equipo', label: 'Equipo' }, { k: 'fecha_inicio', label: 'Fecha de inicio', t: 'date' },
+      { k: 'estado', label: 'Estado', t: 'sel', opts: ['ACTIVO', 'INACTIVO', 'RESERVA'] }, { k: 'motivo_bucket', label: 'Motivo de baja', t: 'sel', opts: ['FIN_VIDA_UTIL', 'CONDICION_OPERATIVA', 'SIN_CAUSA', 'OTRA'] },
+      { k: 'causa', label: 'Causa', t: 'sel', opts: CAUSAS_DESCARTE }, { k: 'falla', label: 'Modo de falla', t: 'sel', opts: MODOS_FALLA },
+      { k: 'mina', label: 'Mina', t: 'sel', opts: MINAS_SEGOVIA }, { k: 'equipo', label: 'Equipo' }, { k: 'fecha_inicio', label: 'Fecha de inicio', t: 'date' },
       { k: 'fecha_final', label: 'Fecha final / baja', t: 'date' }, { k: 'precio_usd', label: 'Precio USD', t: 'num' }, { k: 'operador', label: 'Operador' },
     ],
   },
@@ -6257,6 +6496,7 @@ function openDataEdit(row) {
     let input;
     if (c.ro) input = `<input type="text" id="${id}" value="${esc(v ?? '')}" disabled>`;
     else if (c.t === 'bool') input = `<select id="${id}"><option value="true" ${v ? 'selected' : ''}>Sí</option><option value="false" ${!v ? 'selected' : ''}>No</option></select>`;
+    else if (c.t === 'sel') input = `<select id="${id}">${opcionesSel(c.opts, v)}</select>`;
     else if (c.t === 'num') input = `<input type="number" step="any" id="${id}" value="${esc(v ?? '')}">`;
     else if (c.t === 'date') input = `<input type="date" id="${id}" value="${esc(v ?? '')}">`;
     else input = `<input type="text" id="${id}" value="${esc(v ?? '')}">`;
