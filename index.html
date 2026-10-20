@@ -579,7 +579,7 @@ footer b{color:var(--text-dim);}
     <datalist id="drOperadoresList"></datalist>
     <p class="empty-note" id="drEmptyNote">Selecciona una mina y un equipo para armar las filas del reporte.</p>
     <div id="drRowsWrap" hidden>
-      <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar también las herramientas de otras categorías y de otros equipos de la mina (las de otro equipo pasan a este equipo al guardar)</span></label>
+      <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar también las herramientas de otras categorías (por si una está mal clasificada)</span></label>
       <p class="chart-sub" id="drPrefillNote" hidden></p>
       <div id="drRowsBody"></div>
       <div class="perf-selection-bar">
@@ -741,7 +741,12 @@ footer b{color:var(--text-dim);}
     <h3>En bodega — sin despachar</h3>
     <p class="chart-sub">Códigos ya registrados que todavía no se han asignado a una mina y un equipo.</p>
     <div class="perf-selection-bar" style="margin-bottom:8px;"><button class="small primary" id="bodegaRegistrarBtn" type="button">+ Registrar código en bodega</button></div>
-    <div class="table-wrap">
+    <div class="filterbar">
+      <div class="filter-group" style="flex:1; min-width:220px;"><label>Buscar</label><input type="search" id="reservaSearch" placeholder="Código, referencia o herramienta…"></div>
+      <div class="filter-group"><label>Referencia</label><select id="reservaRef"><option value="">Todas</option></select></div>
+    </div>
+    <p class="chart-sub" id="reservaResumen"></p>
+    <div class="table-wrap baja-scroll">
       <table>
         <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Equipo</th><th>Fecha</th><th></th></tr></thead>
         <tbody id="reservaBody"></tbody>
@@ -793,17 +798,33 @@ footer b{color:var(--text-dim);}
   </div>
 
   <section class="card" id="reportsListView">
-    <h3>Herramientas con falla prematura</h3>
-    <p class="chart-sub">Solo aparecen aquí las que se dieron de baja como falla (no las que cumplieron su vida útil).</p>
+    <h3>Herramientas dadas de baja</h3>
+    <p class="chart-sub">Desde aquí se genera el informe de falla de una herramienta dada de baja por falla prematura y, si una herramienta se dio de baja por error, se extravió y apareció, o sigue produciendo metros, se puede <b>reactivar</b>.</p>
+    <div class="card" id="rxFormCard" hidden style="background:var(--surface-2); margin:14px 0;">
+      <h3 id="rxFormTitle">Reactivar herramienta</h3>
+      <p class="chart-sub">La herramienta vuelve a quedar <b>activa</b>, sin fecha de baja, causa ni modo de falla, y conserva sus metros acumulados. Confirma en qué mina y equipo está ahora.</p>
+      <div class="filterbar">
+        <div class="filter-group"><label>Mina</label><select id="rxMina"><option value="">Selecciona…</option></select></div>
+        <div class="filter-group"><label>Equipo</label><input type="text" id="rxEquipo" list="rxEquiposList" placeholder="Ej: JUMBO-8"><datalist id="rxEquiposList"></datalist></div>
+      </div>
+      <p class="login-error" id="rxError" hidden></p>
+      <div class="perf-selection-bar">
+        <button class="small ghost" id="rxCancelBtn" type="button">Cancelar</button>
+        <button class="small primary" id="rxConfirmBtn" type="button">Reactivar herramienta</button>
+      </div>
+    </div>
+    <p class="chart-sub" id="rxSuccess" hidden></p>
     <div class="filterbar">
       <div class="filter-group" style="flex:1; min-width:260px;">
         <label>Buscar</label>
         <input type="search" id="reportsSearch" placeholder="Código, referencia, herramienta…">
       </div>
+      <div class="filter-group"><label>Mostrar</label><select id="reportsScope"><option value="fallas">Fallas prematuras (con informe)</option><option value="todas">Todas las bajas</option></select></div>
     </div>
-    <div class="table-wrap">
+    <p class="chart-sub" id="reportsResumen"></p>
+    <div class="table-wrap baja-scroll">
       <table>
-        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Fecha de falla</th><th>Causa</th><th>Modo de falla</th><th></th></tr></thead>
+        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Fecha de baja</th><th>Causa</th><th>Modo de falla</th><th></th></tr></thead>
         <tbody id="reportsListBody"></tbody>
       </table>
     </div>
@@ -5457,6 +5478,18 @@ async function reactivarBaja() {
   } finally { btn.disabled = false; }
 }
 
+async function equiposDeMina(mina, asignados) {
+  const set = new Set(asignados);
+  const b = DEFAULT_BUNDLE, d = b.dict, mi = d.mina.indexOf(mina);
+  if (mi >= 0) {
+    const vistos = new Set();
+    for (const p of b.prod) if (p[1] === mi && p[3] !== null && p[3] !== undefined) vistos.add(p[3]);
+    vistos.forEach(i => { if (d.equipo[i]) set.add(d.equipo[i]); });
+  }
+  try { (await CTAuth.fetchLast('produccion', { mina }, 400)).forEach(r => { if (r.equipo) set.add(r.equipo); }); } catch (e) { /* queda el historial del archivo base */ }
+  return Array.from(set).sort((x, y) => x.localeCompare(y, 'es', { numeric: true }));
+}
+
 async function onDailyMinaChange(mina) {
   dailyReportState.mina = mina;
   dailyReportState.equipo = '';
@@ -5475,10 +5508,13 @@ async function onDailyMinaChange(mina) {
   renderDrRows(true);
   const rows = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
   dailyReportState.activeTools = rows;
-  const equipos = Array.from(new Set(rows.map(r => r.equipo).filter(Boolean))).sort();
+  // Equipos de la mina: los que tienen herramientas asignadas y los que tienen historial de reportes en esa mina.
+  const conHerramientas = new Set(rows.map(r => r.equipo).filter(Boolean));
+  const equipos = await equiposDeMina(mina, conHerramientas);
+  if (dailyReportState.mina !== mina) return;
   equipoSel.innerHTML = equipos.length
-    ? '<option value="">Selecciona…</option>' + equipos.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('')
-    : '<option value="">Sin herramientas activas en esta mina</option>';
+    ? '<option value="">Selecciona…</option>' + equipos.map(e => `<option value="${esc(e)}">${esc(e)}${conHerramientas.has(e) ? '' : ' (sin herramientas asignadas)'}</option>`).join('')
+    : '<option value="">Esta mina no tiene equipos ni herramientas activas</option>';
   equipoSel.disabled = equipos.length === 0;
   renderDrRows(true);
   await renderTodayReports();
@@ -5517,20 +5553,25 @@ function drEquipoTools() {
 }
 function drSlotOptions(slot, tools, selected) {
   const opt = (t) => `<option value="${esc(t.codigo_marcado)}" ${t.codigo_marcado === selected ? 'selected' : ''}>${esc(t.codigo_marcado)} · ${esc(t.herramienta || t.ref_code || '')} (${fmtNum(t.metros_perforados || 0)}${t.metro_garantizado ? '/' + fmtNum(t.metro_garantizado) : ''} m)</option>`;
+  const optOtro = (t) => `<option value="${esc(t.codigo_marcado)}" ${t.codigo_marcado === selected ? 'selected' : ''}>${esc(t.codigo_marcado)} · ${esc(t.herramienta || t.ref_code || '')} (${fmtNum(t.metros_perforados || 0)}${t.metro_garantizado ? '/' + fmtNum(t.metro_garantizado) : ''} m) — de ${esc(t.equipo || 'sin equipo')}</option>`;
   const cat = (t) => drCategoria(t.herramienta);
+  const porCodigo = (a, b) => String(a.equipo || '').localeCompare(String(b.equipo || ''), 'es') || String(a.codigo_marcado).localeCompare(String(b.codigo_marcado), 'es', { numeric: true });
   const propias = tools.filter(t => cat(t) === slot.cat);
   const sinClasif = tools.filter(t => !cat(t));
   const otras = tools.filter(t => cat(t) && cat(t) !== slot.cat);
+  // Herramientas activas de la misma mina asignadas a otros equipos: se pueden prestar entre equipos de una misma mina.
+  const deOtros = dailyReportState.activeTools.filter(t => t.equipo !== dailyReportState.equipo).sort(porCodigo);
+  const prestadas = deOtros.filter(t => cat(t) === slot.cat);
   let h = '<option value="">—</option>' + propias.map(opt).join('');
   if (sinClasif.length) h += `<optgroup label="Sin clasificar">${sinClasif.map(opt).join('')}</optgroup>`;
-  if (dailyReportState.showAll && otras.length) h += `<optgroup label="Otras categorías">${otras.map(opt).join('')}</optgroup>`;
-  else if (selected) { const s = otras.find(t => t.codigo_marcado === selected); if (s) h += `<optgroup label="Elegida">${opt(s)}</optgroup>`; }
-  // Herramientas de la misma mina que están registradas en otro equipo: al guardar el reporte pasan a este equipo.
+  if (prestadas.length) h += `<optgroup label="De otros equipos de la mina (préstamo)">${prestadas.map(optOtro).join('')}</optgroup>`;
   if (dailyReportState.showAll) {
-    const optOtro = (t) => `<option value="${esc(t.codigo_marcado)}" ${t.codigo_marcado === selected ? 'selected' : ''}>${esc(t.codigo_marcado)} · ${esc(t.herramienta || t.ref_code || '')} — hoy en ${esc(t.equipo || 'sin equipo')}</option>`;
-    const deOtros = dailyReportState.activeTools.filter(t => t.equipo !== dailyReportState.equipo && cat(t) === slot.cat)
-      .sort((a, b) => String(a.codigo_marcado).localeCompare(String(b.codigo_marcado), 'es', { numeric: true }));
-    if (deOtros.length) h += `<optgroup label="De otros equipos de la mina (pasan a este equipo al guardar)">${deOtros.map(optOtro).join('')}</optgroup>`;
+    const otrasDeOtros = deOtros.filter(t => cat(t) !== slot.cat);
+    if (otras.length) h += `<optgroup label="Otras categorías">${otras.map(opt).join('')}</optgroup>`;
+    if (otrasDeOtros.length) h += `<optgroup label="Otras categorías de otros equipos">${otrasDeOtros.map(optOtro).join('')}</optgroup>`;
+  } else if (selected) {
+    const s = otras.find(t => t.codigo_marcado === selected) || deOtros.find(t => t.codigo_marcado === selected && cat(t) !== slot.cat);
+    if (s) h += `<optgroup label="Elegida">${opt(s)}</optgroup>`;
   }
   return h;
 }
@@ -5706,9 +5747,9 @@ async function saveDailyReport() {
   try {
     await CTAuth.insertRows('produccion', entries);
     for (const codigo of new Set(entries.map(e => e.codigo_marcado))) {
-      // la herramienta queda en la mina y el equipo donde se está reportando
+      // una herramienta prestada sigue asignada a su equipo; solo si no tenía equipo se le asigna el del reporte
       const pz = byCodigo.get(codigo);
-      if (pz && (pz.mina !== mina || pz.equipo !== equipo)) await CTAuth.updateMatch('piezas', { codigo_marcado: codigo }, { mina, equipo });
+      if (pz && !pz.equipo) await CTAuth.updateMatch('piezas', { codigo_marcado: codigo }, { mina, equipo });
       await refreshPiezaMetros(codigo);
     }
     dailyReportState.activeTools = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
@@ -5814,6 +5855,7 @@ async function enterToolsScreen() {
   toolsState.refs = toolsState.catalog.concat(Array.from(extra.values())).sort((a, b) => (a.ref_code || '').localeCompare(b.ref_code || ''));
   document.getElementById('altaReferencia').innerHTML = '<option value="">Selecciona…</option>' +
     toolsState.refs.map(c => `<option value="${esc(c.ref_code)}">${esc(c.ref_code)}${c.descripcion ? ' — ' + esc(c.descripcion) : ''}${c.sinCatalogo ? ' (sin precio ni garantizado en el catálogo)' : ''}</option>`).join('');
+  document.getElementById('reservaSearch').value = '';
   document.getElementById('altaVarios').checked = false;
   document.getElementById('altaVariosGroup').hidden = true; document.getElementById('altaUnoGroup').hidden = false;
   document.getElementById('altaCodigos').value = '';
@@ -5841,6 +5883,12 @@ function wireToolsEvents() {
       if (!e.target.value) equipoInput.value = '';
     });
   }
+  const reservaSearch = document.getElementById('reservaSearch');
+  if (!reservaSearch.dataset.wired) {
+    reservaSearch.dataset.wired = '1';
+    reservaSearch.addEventListener('input', pintarReserva);
+    document.getElementById('reservaRef').addEventListener('change', pintarReserva);
+  }
   const altaVarios = document.getElementById('altaVarios');
   if (!altaVarios.dataset.wired) {
     altaVarios.dataset.wired = '1';
@@ -5864,14 +5912,27 @@ function wireToolsEvents() {
 
 async function renderReservaList() {
   toolsState.reserva = await CTAuth.fetchMatch('piezas', { estado: 'RESERVA' });
-  toolsState.reserva.sort((a, b) => (a.codigo_marcado || '').localeCompare(b.codigo_marcado || ''));
-  const tbody = document.getElementById('reservaBody');
-  tbody.innerHTML = toolsState.reserva.length ? toolsState.reserva.map(r => `<tr>
-    <td>${esc(r.ref_code || '—')}</td><td>${esc(r.herramienta || '—')}</td><td>${esc(r.codigo_marcado)}</td>
+  toolsState.reserva.sort((a, b) => (a.codigo_marcado || '').localeCompare(b.codigo_marcado || '', 'es', { numeric: true }));
+  const refSel = document.getElementById('reservaRef'), actual = refSel.value;
+  const refs = Array.from(new Set(toolsState.reserva.map(r => r.ref_code).filter(Boolean))).sort();
+  const desc = (c) => (toolsState.reserva.find(r => r.ref_code === c) || {}).herramienta || '';
+  refSel.innerHTML = '<option value="">Todas</option>' + refs.map(c => `<option value="${esc(c)}" ${c === actual ? 'selected' : ''}>${esc(c)}${desc(c) ? ' — ' + esc(desc(c)) : ''}</option>`).join('');
+  pintarReserva();
+}
+function pintarReserva() {
+  const q = document.getElementById('reservaSearch').value.trim().toLowerCase(), ref = document.getElementById('reservaRef').value;
+  const todas = toolsState.reserva || [];
+  const lista = todas.filter(r => (!ref || r.ref_code === ref) && (!q || [r.codigo_marcado, r.ref_code, r.herramienta].some(v => String(v || '').toLowerCase().includes(q))));
+  const MAX = 300;
+  document.getElementById('reservaResumen').textContent = todas.length
+    ? `${fmtNum(lista.length)} de ${fmtNum(todas.length)} códigos en bodega${lista.length > MAX ? ` — mostrando los primeros ${MAX}: usa Buscar o la referencia para acotar` : ''}.`
+    : '';
+  document.getElementById('reservaBody').innerHTML = lista.length ? lista.slice(0, MAX).map(r => `<tr>
+    <td>${esc(r.ref_code || '—')}</td><td>${esc(r.herramienta || '—')}</td><td><b>${esc(r.codigo_marcado)}</b></td>
     <td>${esc(r.mina || '—')}</td><td>${esc(r.equipo || '—')}</td>
     <td>${r.fecha_inicio ? esc(r.fecha_inicio) : '—'}</td>
     <td><button type="button" class="small ghost tools-despachar-btn" data-codigo="${esc(r.codigo_marcado)}">Despachar</button></td>
-  </tr>`).join('') : `<tr><td colspan="7" class="empty-note">No hay códigos en bodega — todo lo registrado ya fue despachado.</td></tr>`;
+  </tr>`).join('') : `<tr><td colspan="7" class="empty-note">${todas.length ? 'Ningún código en bodega coincide con la búsqueda.' : 'No hay códigos en bodega — todo lo registrado ya fue despachado.'}</td></tr>`;
 }
 
 async function handleRegistrarCodigo() {
@@ -5979,7 +6040,7 @@ async function handleConfirmDespacho() {
 // rendimiento. Solo lista piezas dadas de baja como falla prematura
 // (motivo_bucket='CONDICION_OPERATIVA') — las de fin de vida útil nunca
 // aparecen aquí, por diseño (ver handleConfirmBaja).
-let reportsState = { failures: [], search: '', tool: null, fotos: [] };
+let reportsState = { failures: [], search: '', tool: null, fotos: [], scope: 'fallas', rxTool: null };
 let rptPlanRowSeq = 0;
 const RPT_DEFAULTS_KEY = 'ct_report_defaults_v1';
 
@@ -5990,6 +6051,10 @@ function saveReportDefaults(defaults) {
   try { localStorage.setItem(RPT_DEFAULTS_KEY, JSON.stringify(defaults)); } catch (e) { /* modo privado u otro bloqueo — solo se pierde el autocompletado */ }
 }
 
+async function cargarBajasParaInformes() {
+  if (reportsState.scope === 'todas') reportsState.failures = (await CTAuth.fetchTable('piezas')).filter(r => r.estado === 'INACTIVO');
+  else reportsState.failures = await CTAuth.fetchMatch('piezas', { estado: 'INACTIVO', motivo_bucket: 'CONDICION_OPERATIVA' });
+}
 async function enterReportsScreen() {
   showScreen('reports');
   document.getElementById('reportsUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
@@ -5997,9 +6062,70 @@ async function enterReportsScreen() {
   showReportsList();
   document.getElementById('reportsSearch').value = '';
   reportsState.search = '';
+  reportsState.scope = 'fallas';
+  document.getElementById('reportsScope').value = 'fallas';
+  document.getElementById('rxFormCard').hidden = true;
+  document.getElementById('rxSuccess').hidden = true;
+  document.getElementById('rxMina').innerHTML = '<option value="">Selecciona…</option>' + MINAS_SEGOVIA.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
   wireReportsEvents();
-  reportsState.failures = await CTAuth.fetchMatch('piezas', { estado: 'INACTIVO', motivo_bucket: 'CONDICION_OPERATIVA' });
+  await cargarBajasParaInformes();
   renderReportsList();
+}
+function renderReportsList() {
+  let rows = reportsState.failures;
+  const total = rows.length;
+  if (reportsState.search) {
+    const q = reportsState.search.toLowerCase();
+    rows = rows.filter(r => [r.codigo_marcado, r.ref_code, r.herramienta, r.causa, r.falla].some(v => String(v || '').toLowerCase().includes(q)));
+  }
+  rows = rows.slice().sort((a, b) => (b.fecha_final || '').localeCompare(a.fecha_final || ''));
+  const MAX = 300;
+  document.getElementById('reportsResumen').textContent = `${fmtNum(rows.length)} de ${fmtNum(total)} ${reportsState.scope === 'todas' ? 'bajas' : 'fallas prematuras'}${rows.length > MAX ? ` — mostrando las ${MAX} más recientes: usa Buscar para acotar` : ''}.`;
+  const tbody = document.getElementById('reportsListBody');
+  tbody.innerHTML = rows.length ? rows.slice(0, MAX).map(r => `<tr>
+    <td>${esc(r.ref_code || '—')}</td><td>${esc(r.herramienta || '—')}</td><td><b>${esc(r.codigo_marcado)}</b></td>
+    <td>${esc(r.mina || '—')}</td><td>${esc(r.fecha_final || '—')}</td>
+    <td>${esc(r.causa || '—')}</td><td>${esc(r.falla || '—')}</td>
+    <td style="white-space:nowrap;">${r.motivo_bucket === 'CONDICION_OPERATIVA' ? `<button type="button" class="small primary rpt-generar-btn" data-codigo="${esc(r.codigo_marcado)}">Generar informe</button> ` : ''}<button type="button" class="small ghost rpt-reactivar-btn" data-codigo="${esc(r.codigo_marcado)}">Reactivar</button></td>
+  </tr>`).join('') : `<tr><td colspan="8" class="empty-note">${reportsState.scope === 'todas' ? 'No hay bajas con esa búsqueda.' : 'No hay herramientas con falla prematura con esa búsqueda.'}</td></tr>`;
+}
+
+async function abrirReactivar(codigo) {
+  const r = reportsState.failures.find(x => x.codigo_marcado === codigo);
+  if (!r) return;
+  reportsState.rxTool = r;
+  document.getElementById('rxFormTitle').textContent = `Reactivar — ${r.herramienta || r.codigo_marcado} (${r.codigo_marcado})`;
+  document.getElementById('rxMina').value = MINAS_SEGOVIA.includes(r.mina) ? r.mina : '';
+  document.getElementById('rxEquipo').value = r.equipo || '';
+  document.getElementById('rxError').hidden = true;
+  document.getElementById('rxSuccess').hidden = true;
+  const equipos = Array.from(new Set(DEFAULT_BUNDLE.dict.equipo.concat(reportsState.failures.map(x => x.equipo)).filter(Boolean))).sort((x, y) => x.localeCompare(y, 'es', { numeric: true }));
+  document.getElementById('rxEquiposList').innerHTML = equipos.map(e => `<option value="${esc(e)}"></option>`).join('');
+  const card = document.getElementById('rxFormCard');
+  card.hidden = false;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+async function confirmarReactivar() {
+  const r = reportsState.rxTool, errEl = document.getElementById('rxError');
+  errEl.hidden = true;
+  if (!r) return;
+  const mina = document.getElementById('rxMina').value, equipo = document.getElementById('rxEquipo').value.trim().toUpperCase();
+  if (!mina) { errEl.hidden = false; errEl.textContent = 'Elige la mina en la que está ahora la herramienta.'; return; }
+  if (!equipo) { errEl.hidden = false; errEl.textContent = 'Escribe el equipo en el que está ahora.'; return; }
+  if (!confirm(`¿Reactivar "${r.codigo_marcado}"? Vuelve a quedar activa en ${mina} (${equipo}), sin fecha de baja, causa ni modo de falla.`)) return;
+  const btn = document.getElementById('rxConfirmBtn');
+  btn.disabled = true;
+  try {
+    await CTAuth.updateMatch('piezas', { codigo_marcado: r.codigo_marcado }, { estado: 'ACTIVO', fecha_final: null, causa: null, falla: null, motivo_bucket: null, mina, equipo });
+    reportsState.failures = reportsState.failures.filter(x => x.codigo_marcado !== r.codigo_marcado);
+    reportsState.rxTool = null;
+    document.getElementById('rxFormCard').hidden = true;
+    renderReportsList();
+    const ok = document.getElementById('rxSuccess'); ok.hidden = false;
+    ok.textContent = `"${r.codigo_marcado}" volvió a quedar activa en ${mina} (${equipo}). Ya aparece en el reporte diario y en las listas de herramientas activas.`;
+  } catch (e) {
+    errEl.hidden = false; errEl.textContent = 'No se pudo reactivar (' + e.message + ').';
+  } finally { btn.disabled = false; }
 }
 
 function wireReportsEvents() {
@@ -6017,7 +6143,14 @@ function wireReportsEvents() {
     search.addEventListener('input', (e) => { reportsState.search = e.target.value; renderReportsList(); });
   }
   const listBody = document.getElementById('reportsListBody');
-  if (!listBody.dataset.wired) { listBody.dataset.wired = '1'; listBody.addEventListener('click', handleGenerarInformeClick); }
+  if (!listBody.dataset.wired) {
+    listBody.dataset.wired = '1';
+    listBody.addEventListener('click', handleGenerarInformeClick);
+    listBody.addEventListener('click', (e) => { const b = e.target.closest('.rpt-reactivar-btn'); if (b) abrirReactivar(b.dataset.codigo); });
+    document.getElementById('reportsScope').addEventListener('change', async (e) => { reportsState.scope = e.target.value; await cargarBajasParaInformes(); renderReportsList(); });
+    document.getElementById('rxCancelBtn').addEventListener('click', () => { reportsState.rxTool = null; document.getElementById('rxFormCard').hidden = true; });
+    document.getElementById('rxConfirmBtn').addEventListener('click', confirmarReactivar);
+  }
   const backToListBtn = document.getElementById('rptBackToListBtn');
   if (!backToListBtn.dataset.wired) { backToListBtn.dataset.wired = '1'; backToListBtn.addEventListener('click', showReportsList); }
   const cancelBtn = document.getElementById('rptCancelBtn');
@@ -6038,22 +6171,6 @@ function wireReportsEvents() {
   }
   const generarBtn = document.getElementById('rptGenerarBtn');
   if (!generarBtn.dataset.wired) { generarBtn.dataset.wired = '1'; generarBtn.addEventListener('click', handleGenerarPreview); }
-}
-
-function renderReportsList() {
-  let rows = reportsState.failures;
-  if (reportsState.search) {
-    const q = reportsState.search.toLowerCase();
-    rows = rows.filter(r => [r.codigo_marcado, r.ref_code, r.herramienta].some(v => String(v || '').toLowerCase().includes(q)));
-  }
-  rows = rows.slice().sort((a, b) => (b.fecha_final || '').localeCompare(a.fecha_final || ''));
-  const tbody = document.getElementById('reportsListBody');
-  tbody.innerHTML = rows.length ? rows.map(r => `<tr>
-    <td>${esc(r.ref_code || '—')}</td><td>${esc(r.herramienta || '—')}</td><td>${esc(r.codigo_marcado)}</td>
-    <td>${esc(r.mina || '—')}</td><td>${esc(r.fecha_final || '—')}</td>
-    <td>${esc(r.causa || '—')}</td><td>${esc(r.falla || '—')}</td>
-    <td><button type="button" class="small primary rpt-generar-btn" data-codigo="${esc(r.codigo_marcado)}">Generar informe</button></td>
-  </tr>`).join('') : `<tr><td colspan="8" class="empty-note">No hay herramientas con falla prematura registradas todavía.</td></tr>`;
 }
 
 function handleGenerarInformeClick(e) {

@@ -163,7 +163,7 @@ __CSS__
     <datalist id="drOperadoresList"></datalist>
     <p class="empty-note" id="drEmptyNote">Selecciona una mina y un equipo para armar las filas del reporte.</p>
     <div id="drRowsWrap" hidden>
-      <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar también las herramientas de otras categorías y de otros equipos de la mina (las de otro equipo pasan a este equipo al guardar)</span></label>
+      <label class="opt" style="margin-bottom:8px;display:inline-flex;gap:6px;align-items:center;font-size:12.5px;"><input type="checkbox" id="drShowAll"> <span>Mostrar también las herramientas de otras categorías (por si una está mal clasificada)</span></label>
       <p class="chart-sub" id="drPrefillNote" hidden></p>
       <div id="drRowsBody"></div>
       <div class="perf-selection-bar">
@@ -325,7 +325,12 @@ __CSS__
     <h3>En bodega — sin despachar</h3>
     <p class="chart-sub">Códigos ya registrados que todavía no se han asignado a una mina y un equipo.</p>
     <div class="perf-selection-bar" style="margin-bottom:8px;"><button class="small primary" id="bodegaRegistrarBtn" type="button">+ Registrar código en bodega</button></div>
-    <div class="table-wrap">
+    <div class="filterbar">
+      <div class="filter-group" style="flex:1; min-width:220px;"><label>Buscar</label><input type="search" id="reservaSearch" placeholder="Código, referencia o herramienta…"></div>
+      <div class="filter-group"><label>Referencia</label><select id="reservaRef"><option value="">Todas</option></select></div>
+    </div>
+    <p class="chart-sub" id="reservaResumen"></p>
+    <div class="table-wrap baja-scroll">
       <table>
         <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Equipo</th><th>Fecha</th><th></th></tr></thead>
         <tbody id="reservaBody"></tbody>
@@ -377,17 +382,33 @@ __CSS__
   </div>
 
   <section class="card" id="reportsListView">
-    <h3>Herramientas con falla prematura</h3>
-    <p class="chart-sub">Solo aparecen aquí las que se dieron de baja como falla (no las que cumplieron su vida útil).</p>
+    <h3>Herramientas dadas de baja</h3>
+    <p class="chart-sub">Desde aquí se genera el informe de falla de una herramienta dada de baja por falla prematura y, si una herramienta se dio de baja por error, se extravió y apareció, o sigue produciendo metros, se puede <b>reactivar</b>.</p>
+    <div class="card" id="rxFormCard" hidden style="background:var(--surface-2); margin:14px 0;">
+      <h3 id="rxFormTitle">Reactivar herramienta</h3>
+      <p class="chart-sub">La herramienta vuelve a quedar <b>activa</b>, sin fecha de baja, causa ni modo de falla, y conserva sus metros acumulados. Confirma en qué mina y equipo está ahora.</p>
+      <div class="filterbar">
+        <div class="filter-group"><label>Mina</label><select id="rxMina"><option value="">Selecciona…</option></select></div>
+        <div class="filter-group"><label>Equipo</label><input type="text" id="rxEquipo" list="rxEquiposList" placeholder="Ej: JUMBO-8"><datalist id="rxEquiposList"></datalist></div>
+      </div>
+      <p class="login-error" id="rxError" hidden></p>
+      <div class="perf-selection-bar">
+        <button class="small ghost" id="rxCancelBtn" type="button">Cancelar</button>
+        <button class="small primary" id="rxConfirmBtn" type="button">Reactivar herramienta</button>
+      </div>
+    </div>
+    <p class="chart-sub" id="rxSuccess" hidden></p>
     <div class="filterbar">
       <div class="filter-group" style="flex:1; min-width:260px;">
         <label>Buscar</label>
         <input type="search" id="reportsSearch" placeholder="Código, referencia, herramienta…">
       </div>
+      <div class="filter-group"><label>Mostrar</label><select id="reportsScope"><option value="fallas">Fallas prematuras (con informe)</option><option value="todas">Todas las bajas</option></select></div>
     </div>
-    <div class="table-wrap">
+    <p class="chart-sub" id="reportsResumen"></p>
+    <div class="table-wrap baja-scroll">
       <table>
-        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Fecha de falla</th><th>Causa</th><th>Modo de falla</th><th></th></tr></thead>
+        <thead><tr><th>Referencia</th><th>Herramienta</th><th>Código Interno</th><th>Mina</th><th>Fecha de baja</th><th>Causa</th><th>Modo de falla</th><th></th></tr></thead>
         <tbody id="reportsListBody"></tbody>
       </table>
     </div>
