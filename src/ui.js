@@ -12,7 +12,15 @@ const ROLE_LABELS = {
   admin: 'Administrador', viewer: 'Visualizador',
   supervisor: 'Supervisor', digitalizador: 'Digitalizador', tecnico: 'Técnico',
 };
+const TODOS_ROLES = ['viewer', 'admin', 'supervisor', 'digitalizador', 'tecnico'];
 const MINE_DEFAULT_BUNDLES = { segovia: window.__DATA_BUNDLE__ };
+
+// Un usuario tiene un rol principal (role) y puede tener roles adicionales (extra_roles): sus permisos son la suma de todos.
+function rolesDe(usuario) { return Array.from(new Set([usuario && usuario.role].concat((usuario && usuario.extra_roles) || []).filter(Boolean))); }
+function hasRole(r) { return !!currentUser && rolesDe(currentUser).includes(r); }
+function rolesLabel(usuario) { return rolesDe(usuario).map(r => ROLE_LABELS[r] || r).join(' + '); }
+// Con el selector de módulos entran: Administrador, Visualizador y quien tenga más de un rol; los demás van directo a su pantalla.
+function tieneHub() { return hasRole('admin') || hasRole('viewer') || rolesDe(currentUser).length > 1; }
 
 let currentMine = null;
 let presentationMode = false;
@@ -30,14 +38,14 @@ let conciliacionCache = {};
 // mina que le asignó el administrador vía allowed_mines, igual que Visualizador.
 function canSeeMine(slug) {
   if (!currentUser) return false;
-  if (currentUser.role === 'admin' || currentUser.role === 'supervisor' || currentUser.role === 'digitalizador') return true;
+  if (hasRole('admin') || hasRole('supervisor') || hasRole('digitalizador')) return true;
   return (currentUser.allowed_mines || []).includes(slug);
 }
 // El Administrador ve todo lo que ve el Supervisor (las 3 minas juntas, sin
 // acotarse a allowed_mines) — "los administradores deben tener permiso a
 // todo", incluidos los módulos de campo que antes eran solo del Supervisor.
 function perfSeesAllMines() {
-  return currentUser.role === 'supervisor' || currentUser.role === 'admin';
+  return hasRole('supervisor') || hasRole('admin');
 }
 function goToHub() {
   renderHub();
@@ -963,7 +971,7 @@ const COLS_PIEZA = [
   {
     key: 'conciliado', label: 'Conciliado',
     render: (raw, row) => {
-      const isAdmin = currentUser && currentUser.role === 'admin';
+      const isAdmin = hasRole('admin');
       if (!isAdmin) return `<td><span class="pill ${raw === 'SI' ? 'ok' : 'warn'}">${raw === 'SI' ? '✓ Sí' : '— No'}</span></td>`;
       return `<td><button type="button" class="small conc-toggle ${raw === 'SI' ? 'conc-si' : 'conc-no'}" data-codigo="${esc(row.codigo)}">${raw === 'SI' ? '✓ Sí' : '— No'}</button></td>`;
     },
@@ -1119,7 +1127,7 @@ function cycleTheme() {
 // ============ usuarios (gestión real — vía Supabase; solo visible para administradores) ============
 async function renderUserMgmt() {
   const listEl = document.getElementById('userList');
-  if (!listEl || !currentUser || currentUser.role !== 'admin') return;
+  if (!listEl || !currentUser || !hasRole('admin')) return;
   let profiles;
   try { profiles = await CTAuth.listProfiles(); }
   catch (err) {
@@ -1127,50 +1135,76 @@ async function renderUserMgmt() {
     return;
   }
   listEl.innerHTML = '';
+  const status = document.getElementById('userAddStatus');
+  const aviso = (msg, ok) => { status.textContent = msg; status.className = 'import-status ' + (ok ? 'ok' : 'err'); status.style.display = 'block'; };
+  const fallo = (err, accion) => /extra_roles/i.test(err.message || '')
+    ? 'Falta ejecutar en Supabase el archivo supabase_schema_multiples_roles.sql (roles adicionales).'
+    : `No se pudo ${accion} (${err.message}).`;
+  // Accesos que tienen sentido según los roles: «segovia» para el Visualizador y las minas de Segovia para el Técnico.
+  const minasValidas = (roles) => (roles.includes('viewer') ? ['segovia'] : []).concat(roles.includes('tecnico') ? MINAS_SEGOVIA : []);
+  const sinMinasEspecificas = (roles) => !roles.includes('viewer') && !roles.includes('tecnico');
   profiles.forEach(p => {
     const isSelf = currentUser && p.id === currentUser.id;
-    // Admin, Supervisor y Digitalizador siempre ven las 3 minas (ver
-    // canSeeMine) — las casillas solo aplican a Visualizador (acceso al
-    // tablero de Segovia) y Técnico (acotado a las minas de Segovia que se
-    // marquen: Sandra K, El Silencio, Providencia).
-    const sinMinasEspecificas = p.role === 'admin' || p.role === 'supervisor' || p.role === 'digitalizador';
-    const opcionesMina = p.role === 'tecnico'
-      ? MINAS_SEGOVIA.map(n => ({ value: n, label: tituloMina(n) }))
-      : MINES.map(m => ({ value: m.slug, label: m.label.replace('Aris Mining ', '') }));
-    const minesHtml = sinMinasEspecificas
+    const extras = (p.extra_roles || []).filter(r => r !== p.role);
+    const roles = rolesDe({ role: p.role, extra_roles: extras });
+    // Admin, Supervisor y Digitalizador ven las 3 minas; las casillas aplican al Visualizador (tablero de Segovia)
+    // y al Técnico (las minas de Segovia que se marquen: Sandra K, El Silencio, Providencia).
+    const opciones = (roles.includes('viewer') ? MINES.map(m => ({ value: m.slug, label: m.label.replace('Aris Mining ', '') })) : [])
+      .concat(roles.includes('tecnico') ? MINAS_SEGOVIA.map(n => ({ value: n, label: tituloMina(n) })) : []);
+    const minesHtml = sinMinasEspecificas(roles)
       ? '<span class="mine-checks"><span class="admin-note">ve todas las minas</span></span>'
-      : `<span class="mine-checks">${opcionesMina.map(o => `<label><input type="checkbox" data-mine="${esc(o.value)}" ${(p.allowed_mines || []).map(String).map(x => x.toUpperCase()).includes(o.value.toUpperCase()) ? 'checked' : ''}> ${esc(o.label)}</label>`).join('')}</span>`;
-    const roleOptions = ['viewer', 'admin', 'supervisor', 'digitalizador', 'tecnico']
-      .map(r => `<option value="${r}" ${p.role === r ? 'selected' : ''}>${esc(ROLE_LABELS[r])}</option>`).join('');
+      : `<span class="mine-checks">${opciones.map(o => `<label><input type="checkbox" data-mine="${esc(o.value)}" ${(p.allowed_mines || []).map(String).map(x => x.toUpperCase()).includes(o.value.toUpperCase()) ? 'checked' : ''}> ${esc(o.label)}</label>`).join('')}</span>`;
+    const roleOptions = TODOS_ROLES.map(r => `<option value="${r}" ${p.role === r ? 'selected' : ''}>${esc(ROLE_LABELS[r])}</option>`).join('');
+    const extraHtml = TODOS_ROLES.filter(r => r !== p.role).map(r => `<label><input type="checkbox" data-extra="${r}" ${extras.includes(r) ? 'checked' : ''}> ${esc(ROLE_LABELS[r])}</label>`).join('');
     const row = el(`<div class="user-row">
       <span class="user-email">${esc(p.email)}</span>
-      <select data-id="${esc(p.id)}">${roleOptions}</select>
+      <label class="role-field"><span>Rol principal</span><select data-id="${esc(p.id)}">${roleOptions}</select></label>
+      <span class="extra-roles"><span class="extra-title">Roles adicionales</span>${extraHtml}</span>
       ${minesHtml}
-      <button class="small ghost" type="button" ${isSelf ? 'disabled title="No puedes revocar tu propio acceso"' : ''}>Revocar</button>
+      <button class="small ghost btn-revocar" type="button" ${isSelf ? 'disabled title="No puedes revocar tu propio acceso"' : ''}>Revocar</button>
     </div>`);
-    const status = document.getElementById('userAddStatus');
+    // Después de cualquier cambio de roles, los accesos por mina se ajustan a lo que esos roles permiten
+    // (Visualizador nuevo queda con Segovia; sin Técnico se quitan las minas de Segovia).
+    const ajustarMinas = async (rolesNuevos, antes) => {
+      const validas = minasValidas(rolesNuevos).map(x => x.toUpperCase());
+      let mines = (p.allowed_mines || []).filter(m => validas.includes(String(m).toUpperCase()));
+      if (rolesNuevos.includes('viewer') && !antes.includes('viewer') && !mines.some(m => String(m).toLowerCase() === 'segovia')) mines = mines.concat(['segovia']);
+      const igual = mines.length === (p.allowed_mines || []).length && mines.every(m => (p.allowed_mines || []).includes(m));
+      if (!igual) { await CTAuth.updateProfileMines(p.id, mines); p.allowed_mines = mines; if (isSelf) currentUser.allowed_mines = mines; }
+    };
     const select = row.querySelector('select');
     select.addEventListener('change', async () => {
+      const nuevoPrincipal = select.value, antes = rolesDe({ role: p.role, extra_roles: extras });
       try {
-        await CTAuth.updateProfileRole(p.id, select.value);
-        // Para Técnico el acceso son las minas de Segovia (Sandra K…); para los
-        // demás es "segovia". Al cruzar esa frontera el acceso anterior ya no
-        // significa lo mismo, así que se reinicia: Técnico queda sin mina hasta
-        // que se le asigne una; Visualizador vuelve a tener Segovia.
-        if ((p.role === 'tecnico') !== (select.value === 'tecnico')) {
-          const reiniciado = select.value === 'viewer' ? ['segovia'] : [];
-          await CTAuth.updateProfileMines(p.id, reiniciado);
-          if (isSelf) currentUser.allowed_mines = reiniciado;
-        }
-        status.textContent = `Rol de ${p.email} actualizado a ${ROLE_LABELS[select.value] || select.value}.`;
-        status.className = 'import-status ok'; status.style.display = 'block';
-        if (isSelf) { currentUser.role = select.value; updateAuthUI(); }
+        const nuevosExtras = extras.filter(r => r !== nuevoPrincipal);
+        await CTAuth.updateProfileRole(p.id, nuevoPrincipal);
+        if (nuevosExtras.length !== extras.length) await CTAuth.updateProfileExtraRoles(p.id, nuevosExtras);
+        await ajustarMinas(rolesDe({ role: nuevoPrincipal, extra_roles: nuevosExtras }), antes);
+        aviso(`Rol principal de ${p.email}: ${ROLE_LABELS[nuevoPrincipal]}.`, true);
+        if (isSelf) { currentUser.role = nuevoPrincipal; currentUser.extra_roles = nuevosExtras; updateAuthUI(); }
         renderUserMgmt();
       } catch (err) {
         select.value = p.role;
-        status.textContent = 'No se pudo actualizar el rol (' + err.message + ').';
-        status.className = 'import-status err'; status.style.display = 'block';
+        aviso(fallo(err, 'actualizar el rol'), false);
       }
+    });
+    row.querySelectorAll('input[type="checkbox"][data-extra]').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const set = new Set(extras);
+        if (cb.checked) set.add(cb.dataset.extra); else set.delete(cb.dataset.extra);
+        const nuevosExtras = Array.from(set), antes = rolesDe({ role: p.role, extra_roles: extras });
+        if (isSelf && cb.dataset.extra === 'admin' && !cb.checked && p.role !== 'admin' && !confirm('Vas a quitarte el rol de Administrador y perderás acceso a esta pantalla. ¿Continuar?')) { cb.checked = true; return; }
+        try {
+          await CTAuth.updateProfileExtraRoles(p.id, nuevosExtras);
+          await ajustarMinas(rolesDe({ role: p.role, extra_roles: nuevosExtras }), antes);
+          aviso(`Roles de ${p.email}: ${rolesLabel({ role: p.role, extra_roles: nuevosExtras })}.`, true);
+          if (isSelf) { currentUser.extra_roles = nuevosExtras; updateAuthUI(); }
+          renderUserMgmt();
+        } catch (err) {
+          cb.checked = !cb.checked;
+          aviso(fallo(err, 'actualizar los roles'), false);
+        }
+      });
     });
     row.querySelectorAll('input[type="checkbox"][data-mine]').forEach(cb => {
       cb.addEventListener('change', async () => {
@@ -1180,17 +1214,15 @@ async function renderUserMgmt() {
         try {
           await CTAuth.updateProfileMines(p.id, mines);
           p.allowed_mines = mines;
-          status.textContent = `Acceso de ${p.email} actualizado.`;
-          status.className = 'import-status ok'; status.style.display = 'block';
+          aviso(`Acceso de ${p.email} actualizado.`, true);
           if (isSelf) { currentUser.allowed_mines = mines; }
         } catch (err) {
           cb.checked = !cb.checked;
-          status.textContent = 'No se pudo actualizar el acceso (' + err.message + ').';
-          status.className = 'import-status err'; status.style.display = 'block';
+          aviso('No se pudo actualizar el acceso (' + err.message + ').', false);
         }
       });
     });
-    const delBtn = row.querySelector('button');
+    const delBtn = row.querySelector('.btn-revocar');
     if (!isSelf) delBtn.addEventListener('click', async () => {
       if (!confirm(`¿Revocar el acceso de ${p.email}?`)) return;
       try {
@@ -1207,7 +1239,7 @@ async function renderUserMgmt() {
 // ============ autenticación (real — Supabase Auth, ver auth.js) ============
 function updateAuthUI() {
   if (!currentUser) return;
-  const label = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
+  const label = `${currentUser.email} · ${rolesLabel(currentUser)}`;
   const badge = document.getElementById('userBadge');
   badge.textContent = label; badge.hidden = false;
   document.getElementById('hubUserBadge').textContent = label;
@@ -1236,54 +1268,30 @@ function mineInfo(slug) {
 function renderHub() {
   const grid = document.getElementById('hubGrid');
   grid.innerHTML = '';
-  MINES.forEach(m => {
-    if (!canSeeMine(m.slug)) return;
+  const add = (icon, title, sub, handler) => {
     const card = el(`<button type="button" class="hub-card">
-      <span class="hub-card-icon">${m.icon}</span>
-      <span class="hub-card-title">${esc(m.label)}</span>
-      <span class="hub-card-sub">${esc(m.sub)}</span>
+      <span class="hub-card-icon">${icon}</span>
+      <span class="hub-card-title">${esc(title)}</span>
+      <span class="hub-card-sub">${esc(sub)}</span>
     </button>`);
-    card.addEventListener('click', () => enterMine(m.slug));
+    card.addEventListener('click', handler);
     grid.appendChild(card);
-  });
-  if (MINES.some(m => canSeeMine(m.slug))) {
-    const card = el(`<button type="button" class="hub-card">
-      <span class="hub-card-icon">📊</span>
-      <span class="hub-card-title">Presentación al cliente</span>
-      <span class="hub-card-sub">Vista resumida, sin CPM ni cifras de pérdida</span>
-    </button>`);
-    card.addEventListener('click', () => enterMine(MINES.find(m => canSeeMine(m.slug)).slug, { presentation: true }));
-    grid.appendChild(card);
+  };
+  const admin = hasRole('admin'), supervisor = hasRole('supervisor');
+  // El tablero completo (con costos) y la presentación son del Administrador y del Visualizador.
+  if (admin || hasRole('viewer')) {
+    MINES.forEach(m => { if (canSeeMine(m.slug)) add(m.icon, m.label, m.sub, () => enterMine(m.slug)); });
+    if (MINES.some(m => canSeeMine(m.slug))) add('📊', 'Presentación al cliente', 'Vista resumida, sin CPM ni cifras de pérdida', () => enterMine(MINES.find(m => canSeeMine(m.slug)).slug, { presentation: true }));
   }
-  if (currentUser.role === 'admin') {
-    const card = el(`<button type="button" class="hub-card">
-      <span class="hub-card-icon">👤</span>
-      <span class="hub-card-title">Gestión de usuarios</span>
-      <span class="hub-card-sub">Roles y acceso por mina</span>
-    </button>`);
-    card.addEventListener('click', enterUsersScreen);
-    grid.appendChild(card);
-
-    // El Administrador tiene acceso a todo lo que antes era exclusivo de
-    // Supervisor/Técnico/Digitalizador — estas 4 tarjetas son la puerta de
-    // entrada a esos módulos de campo (cada pantalla ya sabe volver aquí
-    // con su botón "Inicio").
-    [
-      ['📈', 'Panel de rendimiento', 'Metraje y % de cumplimiento — las 3 minas, sin costos', enterPerfScreen],
-      ['📝', 'Reporte diario', 'Cargar metraje diario y dar de baja herramientas', enterDigitalizadorScreen],
-      ['🔧', 'Códigos y despachos', 'Registrar herramientas nuevas y despacharlas', enterToolsScreen],
-      ['📄', 'Informes de falla', 'Generar el informe de análisis de falla prematura', enterReportsScreen],
-      ['🗄️', 'Datos', 'Ver y corregir la base de datos', enterDataScreen],
-    ].forEach(([icon, title, sub, handler]) => {
-      const c = el(`<button type="button" class="hub-card">
-        <span class="hub-card-icon">${icon}</span>
-        <span class="hub-card-title">${esc(title)}</span>
-        <span class="hub-card-sub">${esc(sub)}</span>
-      </button>`);
-      c.addEventListener('click', handler);
-      grid.appendChild(c);
-    });
+  if (admin) add('👤', 'Gestión de usuarios', 'Roles y acceso por mina', enterUsersScreen);
+  // Cada módulo de campo aparece para quien tenga el rol correspondiente (el Administrador los tiene todos).
+  if (admin || supervisor || hasRole('tecnico')) add('📈', 'Panel de rendimiento', (admin || supervisor) ? 'Metraje y % de cumplimiento — las 3 minas, sin costos' : 'Metraje y % de cumplimiento de tu mina, sin costos', enterPerfScreen);
+  if (admin || hasRole('digitalizador')) add('📝', 'Reporte diario', 'Cargar metraje diario y dar de baja herramientas', enterDigitalizadorScreen);
+  if (admin || supervisor) {
+    add('🔧', 'Códigos y despachos', 'Registrar herramientas nuevas y despacharlas', enterToolsScreen);
+    add('📄', 'Informes de falla', 'Generar el informe de análisis de falla prematura', enterReportsScreen);
   }
+  if (admin) add('🗄️', 'Datos', 'Ver y corregir la base de datos', enterDataScreen);
   if (!grid.children.length) {
     grid.innerHTML = '<div class="hub-empty">No tienes acceso a ningún módulo todavía. Pide a un administrador que te asigne acceso.</div>';
   }
@@ -1296,13 +1304,9 @@ async function enterHub(user) {
   // no tienen módulos que elegir todavía, así que el selector de módulo
   // (con las tarjetas de mina/presentación/usuarios) no les sirve de nada.
   // Digitalizador aún no tiene pantalla propia (llega en la fase siguiente).
-  if (user.role === 'supervisor' || user.role === 'tecnico') {
-    await enterPerfScreen();
-    return;
-  }
-  if (user.role === 'digitalizador') {
-    await enterDigitalizadorScreen();
-    return;
+  if (!tieneHub()) {
+    if (hasRole('supervisor') || hasRole('tecnico')) { await enterPerfScreen(); return; }
+    if (hasRole('digitalizador')) { await enterDigitalizadorScreen(); return; }
   }
   renderHub();
   showScreen('hub');
@@ -1339,7 +1343,7 @@ async function enterPerfScreen() {
   document.getElementById('perfMinaFilterGroup').hidden = !isSupervisor;
   document.getElementById('perfGoToolsBtn').hidden = !isSupervisor;
   document.getElementById('perfGoReportsBtn').hidden = !isSupervisor;
-  document.getElementById('perfHomeBtn').hidden = currentUser.role !== 'admin';
+  document.getElementById('perfHomeBtn').hidden = !tieneHub();
 
   const allRows = [];
   for (const m of MINES) {
@@ -1548,7 +1552,7 @@ function exportPerfPdf() {
     ${logoSrc ? `<img src="${logoSrc}" alt="CORE TECH">` : '<div></div>'}
     <div style="text-align:right;">
       <h1>Panel de rendimiento</h1>
-      <p class="meta">Generado el ${esc(fecha)} · ${esc(currentUser.email || '')} (${esc(ROLE_LABELS[currentUser.role] || currentUser.role)})</p>
+      <p class="meta">Generado el ${esc(fecha)} · ${esc(currentUser.email || '')} (${esc(rolesLabel(currentUser))})</p>
     </div>
   </header>
   <p class="legend">
@@ -1661,8 +1665,8 @@ function fmtFechaLarga(fechaStr) {
 
 async function enterDigitalizadorScreen() {
   showScreen('daily-report');
-  document.getElementById('dailyReportUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
-  document.getElementById('dailyReportHomeBtn').hidden = currentUser.role !== 'admin';
+  document.getElementById('dailyReportUserBadge').textContent = `${currentUser.email} · ${rolesLabel(currentUser)}`;
+  document.getElementById('dailyReportHomeBtn').hidden = !tieneHub();
   const today = new Date().toISOString().slice(0, 10);
   dailyReportState = { fecha: today, mina: '', equipo: '', activeTools: [], bajaTools: [], bajaSelected: null, bajaBand: '', bajaMina: '', bajaEquipo: '', bajaSearch: '', showAll: false, brRows: null, brSel: null, brSearch: '', brMina: '', brFiltro: 'todas' };
 
@@ -2322,8 +2326,8 @@ let toolsState = { catalog: [], reserva: [], despachoCodigo: null };
 
 async function enterToolsScreen() {
   showScreen('tools');
-  document.getElementById('toolsUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
-  document.getElementById('toolsHomeBtn').hidden = currentUser.role !== 'admin';
+  document.getElementById('toolsUserBadge').textContent = `${currentUser.email} · ${rolesLabel(currentUser)}`;
+  document.getElementById('toolsHomeBtn').hidden = !tieneHub();
   const today = new Date().toISOString().slice(0, 10);
   document.getElementById('altaFecha').value = today;
   document.getElementById('altaFecha').max = today;
@@ -2550,8 +2554,8 @@ async function cargarBajasParaInformes() {
 }
 async function enterReportsScreen() {
   showScreen('reports');
-  document.getElementById('reportsUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
-  document.getElementById('reportsHomeBtn').hidden = currentUser.role !== 'admin';
+  document.getElementById('reportsUserBadge').textContent = `${currentUser.email} · ${rolesLabel(currentUser)}`;
+  document.getElementById('reportsHomeBtn').hidden = !tieneHub();
   showReportsList();
   document.getElementById('reportsSearch').value = '';
   reportsState.search = '';
@@ -2996,9 +3000,9 @@ function dataFmt(col, v) {
 }
 
 async function enterDataScreen() {
-  if (!currentUser || currentUser.role !== 'admin') return;
+  if (!currentUser || !hasRole('admin')) return;
   showScreen('data');
-  document.getElementById('dataUserBadge').textContent = `${currentUser.email} · ${ROLE_LABELS[currentUser.role] || currentUser.role}`;
+  document.getElementById('dataUserBadge').textContent = `${currentUser.email} · ${rolesLabel(currentUser)}`;
   dataState.search = ''; dataState.page = 1; dataState.editing = null; dataState.pendingFix = null;
   document.getElementById('dataSearch').value = '';
   document.getElementById('dataEditCard').hidden = true;

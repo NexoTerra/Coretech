@@ -48,19 +48,33 @@ async function getMyProfile() {
   const { data: userData } = await client.auth.getUser();
   const user = userData && userData.user;
   if (!user) return null;
-  const { data, error } = await client.from('profiles').select('id,email,role,allowed_mines').eq('id', user.id).maybeSingle();
+  // extra_roles (roles adicionales) existe solo después de ejecutar supabase_schema_multiples_roles.sql;
+  // si la columna todavía no existe se sigue con el rol principal y nadie queda sin acceso.
+  let { data, error } = await client.from('profiles').select('id,email,role,allowed_mines,extra_roles').eq('id', user.id).maybeSingle();
+  if (error && /extra_roles/i.test(error.message || '')) {
+    ({ data, error } = await client.from('profiles').select('id,email,role,allowed_mines').eq('id', user.id).maybeSingle());
+  }
   if (error || !data) return null;
+  if (!Array.isArray(data.extra_roles)) data.extra_roles = [];
   return data;
 }
 
 async function listProfiles() {
-  const { data, error } = await client.from('profiles').select('id,email,role,allowed_mines,created_at').order('created_at', { ascending: true });
+  let { data, error } = await client.from('profiles').select('id,email,role,allowed_mines,extra_roles,created_at').order('created_at', { ascending: true });
+  if (error && /extra_roles/i.test(error.message || '')) {
+    ({ data, error } = await client.from('profiles').select('id,email,role,allowed_mines,created_at').order('created_at', { ascending: true }));
+  }
   if (error) throw error;
-  return data || [];
+  return (data || []).map(p => Object.assign({ extra_roles: [] }, p));
 }
 
 async function updateProfileRole(id, role) {
   const { error } = await client.from('profiles').update({ role }).eq('id', id);
+  if (error) throw error;
+}
+
+async function updateProfileExtraRoles(id, extra) {
+  const { error } = await client.from('profiles').update({ extra_roles: extra }).eq('id', id);
   if (error) throw error;
 }
 
@@ -203,7 +217,7 @@ async function setDatasetMeta(sourceFilename, cpmIdealPorSarta) {
 
 window.CTAuth = {
   signIn, signOut, getSession, getMyProfile, setPassword,
-  listProfiles, updateProfileRole, updateProfileMines, removeProfile,
+  listProfiles, updateProfileRole, updateProfileExtraRoles, updateProfileMines, removeProfile,
   loadConciliacionRemote, setConciliacion,
   fetchTable, replaceTable, getDatasetMeta, setDatasetMeta,
   fetchMatch, fetchLast, insertRows, updateMatch, deleteMatch,
