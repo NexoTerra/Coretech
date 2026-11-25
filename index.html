@@ -389,7 +389,7 @@ footer b{color:var(--text-dim);}
 .badge-partial{font-size:9.5px; color:var(--text-faint); font-weight:600;}
 
 /* ---- reporte diario: filas de herramientas (formato del registro en papel) ---- */
-.dr-row{display:grid; grid-template-columns:repeat(4,minmax(0,1.4fr)) 92px 108px 86px auto; gap:10px 12px; align-items:end; padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); margin-bottom:10px;}
+.dr-row{display:grid; grid-template-columns:minmax(0,1fr) repeat(4,minmax(0,1.4fr)) 92px 108px 86px auto; gap:10px 12px; align-items:end; padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); margin-bottom:10px;}
 .dr-row .filter-group{min-width:0;}
 .dr-row select{font-size:12.5px;}
 .dr-metros-out{display:flex; flex-direction:column; gap:6px;}
@@ -576,7 +576,7 @@ footer b{color:var(--text-dim);}
       <div class="filter-group"><label>Equipo</label><select id="drEquipo" disabled><option value="">Selecciona una mina primero</option></select></div>
       <div class="filter-group"><label>Operador 1</label><input type="text" id="drOperador" list="drOperadoresList" autocomplete="off" placeholder="Escribe o elige el operador"></div>
       <div class="filter-group"><label>Operador 2</label><input type="text" id="drOperador2" list="drOperadoresList" autocomplete="off" placeholder="Opcional"></div>
-      <div class="filter-group"><label>Tipo de perforación</label><select id="drTipo"><option value="">Selecciona…</option></select></div>
+      <div class="filter-group"><label>Tipo de perforación (por defecto)</label><select id="drTipo"><option value="">Selecciona…</option></select></div>
       <div class="filter-group"><label>Turno</label><select id="drTurno"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
       <div class="filter-group"><label>Jornada</label><select id="drJornada"><option value="">—</option><option value="DIA">Día</option><option value="NOCHE">Noche</option></select></div>
       <div class="filter-group"><label>N° de reporte</label><input type="text" id="drReporteNo" placeholder="Opcional"></div>
@@ -954,10 +954,11 @@ footer b{color:var(--text-dim);}
 
   <section class="card">
     <h3>Revisar consistencia</h3>
-    <p class="chart-sub">El acumulado de cada herramienta (piezas) debe ser la suma de sus reportes (producción), y cada fila de un reporte debe tener exactamente una herramienta principal. Estas revisiones lo comprueban y, si encuentran diferencias, te dejan corregirlas.</p>
+    <p class="chart-sub">El acumulado de cada herramienta (piezas) debe ser la suma de sus reportes (producción), cada fila de un reporte debe tener exactamente una herramienta principal y no debe haber filas de reporte guardadas dos veces. Estas revisiones lo comprueban y, si encuentran diferencias, te dejan corregirlas.</p>
     <div class="perf-selection-bar">
       <button class="small" id="dataCheckAcumBtn" type="button">Revisar acumulados de metros</button>
       <button class="small" id="dataCheckPrimBtn" type="button">Revisar filas principales</button>
+      <button class="small" id="dataCheckRepBtn" type="button">Revisar filas repetidas</button>
     </div>
     <div id="dataCheckResult"></div>
   </section>
@@ -5253,12 +5254,13 @@ function wireDailyReportEvents() {
   const tipoSel = document.getElementById('drTipo');
   if (!tipoSel.dataset.wired) {
     tipoSel.dataset.wired = '1';
-    tipoSel.addEventListener('change', () => { drRerenderKeepingValues(); });
+    tipoSel.addEventListener('change', () => { aplicarTipoPorDefecto(); });
   }
   const rowsBody = document.getElementById('drRowsBody');
   if (!rowsBody.dataset.wired) {
     rowsBody.dataset.wired = '1';
     rowsBody.addEventListener('input', (e) => { if (e.target.closest('.dr-row')) updateDrTotals(); });
+    rowsBody.addEventListener('change', (e) => { if (e.target.classList.contains('dr-tipo')) drApplyRowLabels(e.target.closest('.dr-row')); });
     rowsBody.addEventListener('click', (e) => {
       const btn = e.target.closest('.dr-row-remove');
       if (!btn) return;
@@ -5566,8 +5568,29 @@ const DR_SLOTS_SOSTENIMIENTO = [
   { label: 'Extensión', cat: 'BARRA' },
   { label: 'Broca / Punzón', cat: 'BROCA' },
 ];
+function drSlotsFor(tipo) {
+  return tipo === 'SOSTENIMIENTO' ? DR_SLOTS_SOSTENIMIENTO : DR_SLOTS_PERFORACION;
+}
 function drSlots() {
-  return document.getElementById('drTipo').value === 'SOSTENIMIENTO' ? DR_SLOTS_SOSTENIMIENTO : DR_SLOTS_PERFORACION;
+  return drSlotsFor(document.getElementById('drTipo').value);
+}
+// El tipo de perforación se elige por fila (como en el formato en papel: AV / St en cada línea). Cambiarlo solo cambia los rótulos.
+function drApplyRowLabels(rowEl) {
+  const slots = drSlotsFor(rowEl.querySelector('.dr-tipo').value);
+  rowEl.querySelectorAll('.dr-slot').forEach((s, i) => {
+    const lab = s.closest('.filter-group').querySelector('label');
+    if (lab && slots[i]) lab.textContent = slots[i].label;
+  });
+}
+// El tipo "por defecto" (arriba) se aplica a las filas que no se han cambiado a mano.
+function aplicarTipoPorDefecto() {
+  const sel = document.getElementById('drTipo');
+  const prev = sel.dataset.prev || '', now = sel.value;
+  document.querySelectorAll('#drRowsBody .dr-row').forEach(row => {
+    const rs = row.querySelector('.dr-tipo');
+    if (!rs.value || rs.value === prev) { rs.value = now; drApplyRowLabels(row); }
+  });
+  sel.dataset.prev = now;
 }
 function drEquipoTools() {
   return dailyReportState.activeTools
@@ -5600,8 +5623,10 @@ function drSlotOptions(slot, tools, selected) {
 }
 function drRowHtml(vals) {
   const tools = drEquipoTools();
-  const selects = drSlots().map((s, i) => `<div class="filter-group"><label>${esc(s.label)}</label><select class="dr-slot" data-slot="${i}">${drSlotOptions(s, tools, (vals.tools || [])[i])}</select></div>`).join('');
-  return `<div class="dr-row">${selects}
+  const tipo = vals.tipo ?? (document.getElementById('drTipo').value || '');
+  const selects = drSlotsFor(tipo).map((s, i) => `<div class="filter-group"><label>${esc(s.label)}</label><select class="dr-slot" data-slot="${i}">${drSlotOptions(s, tools, (vals.tools || [])[i])}</select></div>`).join('');
+  const tipoSel = `<div class="filter-group"><label>Tipo</label><select class="dr-tipo"><option value="">Elige…</option>${TIPOS_PERFORACION.map(t => `<option value="${esc(t)}" ${t === tipo ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+  return `<div class="dr-row">${tipoSel}${selects}
     <div class="filter-group"><label>Barrenos</label><input type="number" class="dr-barrenos" min="0" step="1" inputmode="numeric" value="${vals.barrenos ?? ''}"></div>
     <div class="filter-group"><label>Longitud (m)</label><input type="number" class="dr-longitud" min="0" step="0.01" inputmode="decimal" value="${vals.longitud ?? ''}"></div>
     <div class="dr-metros-out"><span class="dr-metros-label">Metros</span><span class="dr-metros-val">0</span></div>
@@ -5610,6 +5635,7 @@ function drRowHtml(vals) {
 }
 function drReadRows() {
   return Array.from(document.querySelectorAll('#drRowsBody .dr-row')).map(row => ({
+    tipo: row.querySelector('.dr-tipo').value,
     tools: Array.from(row.querySelectorAll('.dr-slot')).map(s => s.value),
     barrenos: row.querySelector('.dr-barrenos').value === '' ? null : Number(row.querySelector('.dr-barrenos').value),
     longitud: row.querySelector('.dr-longitud').value === '' ? null : Number(row.querySelector('.dr-longitud').value),
@@ -5658,7 +5684,7 @@ async function prefillFromLastReport() {
     const filas = drReadRows();
     if (filas.length !== 1 || filas[0].tools.some(Boolean) || filas[0].barrenos !== null || filas[0].longitud !== null) return;
     const tipoSel = document.getElementById('drTipo');
-    if (!tipoSel.value && g.tipo && TIPOS_PERFORACION.includes(g.tipo)) tipoSel.value = g.tipo;
+    if (!tipoSel.value && g.tipo && TIPOS_PERFORACION.includes(g.tipo)) { tipoSel.value = g.tipo; tipoSel.dataset.prev = g.tipo; }
     const byCodigo = new Map(dailyReportState.activeTools.map(t => [t.codigo_marcado, t]));
     const usados = new Set(), tools = [];
     drSlots().forEach((s, i) => {
@@ -5666,7 +5692,7 @@ async function prefillFromLastReport() {
       if (c) { usados.add(c); tools[i] = c; }
     });
     if (!tools.some(Boolean) && !(g.longitud > 0)) return;
-    document.getElementById('drRowsBody').innerHTML = drRowHtml({ tools, longitud: g.longitud > 0 ? g.longitud : null });
+    document.getElementById('drRowsBody').innerHTML = drRowHtml({ tools, longitud: g.longitud > 0 ? g.longitud : null, tipo: TIPOS_PERFORACION.includes(g.tipo) ? g.tipo : undefined });
     updateDrTotals();
     const quitadas = grupo.filter(r => !byCodigo.has(r.codigo_marcado)).length;
     note.hidden = false;
@@ -5709,7 +5735,7 @@ function addDrRow() {
   const body = document.getElementById('drRowsBody');
   const rows = drReadRows();
   const last = rows[rows.length - 1];
-  const vals = last ? { tools: last.tools, longitud: last.longitud, barrenos: null } : {};
+  const vals = last ? { tools: last.tools, longitud: last.longitud, barrenos: null, tipo: last.tipo || undefined } : {};
   body.insertAdjacentHTML('beforeend', drRowHtml(vals));
   const newRow = body.lastElementChild;
   const focusEl = last ? newRow.querySelector('.dr-slot[data-slot="3"]') : newRow.querySelector('.dr-slot[data-slot="0"]');
@@ -5743,7 +5769,7 @@ async function saveDailyReport() {
   const v = (id) => document.getElementById(id).value.trim();
   const fecha = v('drFecha'), tipo = v('drTipo'), operador = v('drOperador');
   const { mina, equipo } = dailyReportState;
-  if (!fecha || !mina || !equipo || !tipo) { showDrError('Completa la fecha, la mina, el equipo y el tipo de perforación.'); return; }
+  if (!fecha || !mina || !equipo) { showDrError('Completa la fecha, la mina y el equipo.'); return; }
   if (!operador) { showDrError('Escribe el nombre del Operador 1.'); return; }
 
   const byCodigo = new Map(dailyReportState.activeTools.map(r => [r.codigo_marcado, r]));
@@ -5756,11 +5782,13 @@ async function saveDailyReport() {
     if (!tools.length && !(r.barrenos > 0) && !(r.longitud > 0)) continue; // fila vacía
     if (!tools.length) { showDrError(`Fila ${i + 1}: elige al menos una herramienta.`); return; }
     if (!(r.barrenos > 0) || !(r.longitud > 0)) { showDrError(`Fila ${i + 1}: escribe la cantidad de barrenos y la longitud.`); return; }
+    const tipoFila = r.tipo || tipo; // cada fila lleva su propio tipo (avance, escariado o sostenimiento), como el formato en papel
+    if (!tipoFila) { showDrError(`Fila ${i + 1}: elige el tipo de perforación (avance, escariado o sostenimiento).`); return; }
     const grupo = drNewGroupId();
     const metros = drMetros(r);
     tools.forEach((cm, k) => {
       const t = byCodigo.get(cm);
-      entries.push({ ...head, ref_code: t.ref_code, herramienta: t.herramienta, codigo_marcado: cm, metros, es_primario: k === 0, barrenos: r.barrenos, longitud: r.longitud, grupo_id: grupo });
+      entries.push({ ...head, ref_code: t.ref_code, herramienta: t.herramienta, codigo_marcado: cm, metros, es_primario: k === 0, barrenos: r.barrenos, longitud: r.longitud, grupo_id: grupo, tipo: tipoFila });
     });
   }
   if (!entries.length) { showDrError('Agrega al menos una fila con herramientas, barrenos y longitud.'); return; }
@@ -5870,7 +5898,7 @@ async function renderTodayReports() {
     const turno = [first.turno ? 'T' + first.turno : null, first.jornada ? (first.jornada === 'DIA' ? 'Día' : 'Noche') : null].filter(Boolean).join(' · ');
     const bxl = (first.barrenos != null && first.longitud != null) ? `${fmtNum(first.barrenos)} × ${fmtNum(first.longitud, 2)}` : '—';
     return `<tr>
-      <td>${esc(first.equipo || '—')}</td><td>${esc(turno || '—')}</td><td>${esc(first.operador || '—')}</td>
+      <td>${esc(first.equipo || '—')}${first.tipo ? `<div class="muted-small">${esc(first.tipo)}</div>` : ''}</td><td>${esc(turno || '—')}</td><td>${esc(first.operador || '—')}</td>
       <td>${codigos.map(c => `<span class="pill ok" style="margin-right:4px;">${esc(c)}</span>`).join('')}</td>
       <td class="num">${bxl}</td><td class="num">${fmtNum(first.metros, 2)}</td>
       <td><button type="button" class="small ghost danger dr-delete-btn" data-grupo="${esc(first.grupo_id || '')}" data-id="${first.id}" data-codigos="${esc(codigos.join('|'))}" data-mina="${esc(mina)}" data-equipo="${esc(first.equipo || '')}" data-fecha="${esc(fecha)}">Eliminar</button></td>
@@ -6617,9 +6645,11 @@ function wireDataEvents() {
   once('dataEditSave', 'click', saveDataEdit);
   once('dataCheckAcumBtn', 'click', dataCheckAcumulados);
   once('dataCheckPrimBtn', 'click', dataCheckPrincipales);
+  once('dataCheckRepBtn', 'click', dataCheckRepetidas);
   once('dataCheckResult', 'click', (e) => {
     if (e.target.closest('#dataFixAcumBtn')) dataFixAcumulados();
     if (e.target.closest('#dataFixPrimBtn')) dataFixPrincipales();
+    if (e.target.closest('#dataFixRepBtn')) dataFixRepetidas();
   });
 }
 
@@ -6863,6 +6893,63 @@ async function dataFixPrincipales() {
     await dataCheckPrincipales();
   } catch (e) {
     document.getElementById('dataCheckResult').insertAdjacentHTML('beforeend', `<p class="login-error">No se pudo corregir (${esc(e.message)}).</p>`);
+  }
+}
+
+// Filas de reporte guardadas dos o más veces. Una "fila" es el conjunto shank + acople + barra + broca con sus barrenos y longitud
+// (todas las filas de un turno comparten shank, acople y barra: eso NO es repetición; se compara la fila COMPLETA, broca incluida).
+async function dataCheckRepetidas() {
+  const out = document.getElementById('dataCheckResult');
+  out.innerHTML = '<p class="chart-sub">Calculando…</p>';
+  try {
+    const prod = await CTAuth.fetchTable('produccion');
+    dataState.cache.produccion = prod;
+    const grupos = new Map();
+    prod.forEach(p => { if (!p.grupo_id) return; if (!grupos.has(p.grupo_id)) grupos.set(p.grupo_id, []); grupos.get(p.grupo_id).push(p); });
+    const s = (v) => (v == null ? '' : String(v));
+    const filas = Array.from(grupos.entries()).map(([g, rows]) => ({ g, rows, f: rows[0], id: Math.min(...rows.map(r => r.id)), cods: rows.map(r => r.codigo_marcado).sort().join('|') }));
+    const estricta = (x) => [x.f.fecha, x.f.mina, x.f.equipo, s(x.f.operador), s(x.f.operador2), s(x.f.turno), s(x.f.jornada), s(x.f.reporte_no), s(x.f.frente), s(x.f.tipo), Number(x.f.barrenos), Number(x.f.longitud), Number(x.f.metros), x.cods].join('#');
+    const amplia = (x) => [x.f.fecha, x.f.mina, x.f.equipo, s(x.f.operador), Number(x.f.barrenos), Number(x.f.longitud), Number(x.f.metros), x.cods].join('#');
+    const porClave = (fn) => { const m = new Map(); filas.forEach(x => { const k = fn(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); }); return Array.from(m.values()).filter(v => v.length > 1); };
+    const identicas = porClave(estricta).map(v => v.sort((a, b) => a.id - b.id));
+    const copias = identicas.flatMap(v => v.slice(1));
+    const metrosDeMas = copias.reduce((t, x) => t + (Number(x.f.metros) || 0), 0);
+    // mismas herramientas, barrenos y longitud el mismo día, pero con algún dato distinto (tipo, frente, turno…): se revisan a mano
+    const parecidas = porClave(amplia).filter(v => new Set(v.map(estricta)).size > 1);
+    dataState.pendingFix = { rep: copias };
+    const fila = (v) => { const x = v[0].f; return `<tr><td>${esc(String(x.fecha))}</td><td>${esc(x.mina || '')}</td><td>${esc(x.equipo || '')}</td><td>${esc(x.operador || '')}</td><td>${esc(v[0].cods.split('|').join(', '))}</td><td class="num">${fmtNum(x.barrenos)} × ${fmtNum(x.longitud, 2)}</td><td class="num">${fmtNum(x.metros, 1)}</td><td class="num">${v.length}</td></tr>`; };
+    const tabla = (lista, extra) => `<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Mina</th><th>Equipo</th><th>Operador</th><th>Herramientas</th><th class="num">Barrenos × m</th><th class="num">Metros</th><th class="num">Veces</th>${extra ? '<th>Difiere en</th>' : ''}</tr></thead><tbody>${lista.slice(0, 40).map(v => fila(v).replace('</tr>', extra ? `<td>${esc(extra(v))}</td></tr>` : '</tr>')).join('')}</tbody></table></div>${lista.length > 40 ? `<p class="chart-sub">Se muestran las primeras 40 de ${fmtNum(lista.length)}.</p>` : ''}`;
+    const dif = (v) => ['tipo', 'frente', 'turno', 'jornada', 'reporte_no', 'operador2'].filter(c => new Set(v.map(x => s(x.f[c]))).size > 1).map(c => `${c.replace('_no', ' N°')} (${Array.from(new Set(v.map(x => s(x.f[c]) || 'vacío'))).join(' / ')})`).join(', ');
+    let html = '';
+    if (copias.length) {
+      html += `<p class="data-check-warn">${fmtNum(copias.length)} fila${copias.length === 1 ? '' : 's'} de reporte están guardadas más de una vez, idénticas en todo (fecha, equipo, operador, turno, tipo, herramientas incluida la broca, barrenos y longitud). Sobran ${fmtNum(metrosDeMas, 1)} m en los totales.</p>${tabla(identicas)}
+        <div class="perf-selection-bar"><button class="small primary" id="dataFixRepBtn" type="button">Eliminar ${fmtNum(copias.length)} copia${copias.length === 1 ? '' : 's'} (deja la primera de cada una)</button></div>`;
+    } else {
+      html += `<p class="data-check-ok">No hay filas de reporte repetidas: entre las ${fmtNum(filas.length)} filas no hay dos idénticas en todo.</p>`;
+    }
+    if (parecidas.length) {
+      html += `<p class="data-check-warn" style="margin-top:14px;">${fmtNum(parecidas.length)} caso${parecidas.length === 1 ? '' : 's'} para revisar a mano: mismas herramientas, barrenos y longitud el mismo día, pero con algún dato distinto. Pueden ser errores o reportes legítimos; compáralos con el formato en papel y elimina la copia sobrante desde «Datos» si corresponde.</p>${tabla(parecidas, dif)}`;
+    }
+    out.innerHTML = html;
+  } catch (e) { out.innerHTML = `<p class="login-error">No se pudo revisar (${esc(e.message)}).</p>`; }
+}
+
+async function dataFixRepetidas() {
+  const copias = (dataState.pendingFix && dataState.pendingFix.rep) || [];
+  if (!copias.length) return;
+  if (!confirm(`¿Eliminar ${copias.length} fila${copias.length === 1 ? '' : 's'} de reporte repetida${copias.length === 1 ? '' : 's'} dejando la primera de cada una? Los metros acumulados de sus herramientas se recalcularán.`)) return;
+  const btn = document.getElementById('dataFixRepBtn'); btn.disabled = true; btn.textContent = 'Eliminando…';
+  try {
+    const codigos = new Set();
+    for (const x of copias) {
+      await CTAuth.deleteMatch('produccion', { grupo_id: x.g });
+      x.rows.forEach(r => codigos.add(r.codigo_marcado));
+    }
+    for (const cm of codigos) await refreshPiezaMetros(cm);
+    dataState.cache.produccion = null; dataState.cache.piezas = null;
+    await dataCheckRepetidas();
+  } catch (e) {
+    document.getElementById('dataCheckResult').insertAdjacentHTML('beforeend', `<p class="login-error">No se pudo eliminar (${esc(e.message)}). Vuelve a revisar antes de intentarlo otra vez.</p>`);
   }
 }
 

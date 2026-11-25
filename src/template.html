@@ -156,7 +156,7 @@ __CSS__
       <div class="filter-group"><label>Equipo</label><select id="drEquipo" disabled><option value="">Selecciona una mina primero</option></select></div>
       <div class="filter-group"><label>Operador 1</label><input type="text" id="drOperador" list="drOperadoresList" autocomplete="off" placeholder="Escribe o elige el operador"></div>
       <div class="filter-group"><label>Operador 2</label><input type="text" id="drOperador2" list="drOperadoresList" autocomplete="off" placeholder="Opcional"></div>
-      <div class="filter-group"><label>Tipo de perforación</label><select id="drTipo"><option value="">Selecciona…</option></select></div>
+      <div class="filter-group"><label>Tipo de perforación (por defecto)</label><select id="drTipo"><option value="">Selecciona…</option></select></div>
       <div class="filter-group"><label>Turno</label><select id="drTurno"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
       <div class="filter-group"><label>Jornada</label><select id="drJornada"><option value="">—</option><option value="DIA">Día</option><option value="NOCHE">Noche</option></select></div>
       <div class="filter-group"><label>N° de reporte</label><input type="text" id="drReporteNo" placeholder="Opcional"></div>
@@ -534,10 +534,11 @@ __CSS__
 
   <section class="card">
     <h3>Revisar consistencia</h3>
-    <p class="chart-sub">El acumulado de cada herramienta (piezas) debe ser la suma de sus reportes (producción), y cada fila de un reporte debe tener exactamente una herramienta principal. Estas revisiones lo comprueban y, si encuentran diferencias, te dejan corregirlas.</p>
+    <p class="chart-sub">El acumulado de cada herramienta (piezas) debe ser la suma de sus reportes (producción), cada fila de un reporte debe tener exactamente una herramienta principal y no debe haber filas de reporte guardadas dos veces. Estas revisiones lo comprueban y, si encuentran diferencias, te dejan corregirlas.</p>
     <div class="perf-selection-bar">
       <button class="small" id="dataCheckAcumBtn" type="button">Revisar acumulados de metros</button>
       <button class="small" id="dataCheckPrimBtn" type="button">Revisar filas principales</button>
+      <button class="small" id="dataCheckRepBtn" type="button">Revisar filas repetidas</button>
     </div>
     <div id="dataCheckResult"></div>
   </section>

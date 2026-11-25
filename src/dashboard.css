@@ -382,7 +382,7 @@ footer b{color:var(--text-dim);}
 .badge-partial{font-size:9.5px; color:var(--text-faint); font-weight:600;}
 
 /* ---- reporte diario: filas de herramientas (formato del registro en papel) ---- */
-.dr-row{display:grid; grid-template-columns:repeat(4,minmax(0,1.4fr)) 92px 108px 86px auto; gap:10px 12px; align-items:end; padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); margin-bottom:10px;}
+.dr-row{display:grid; grid-template-columns:minmax(0,1fr) repeat(4,minmax(0,1.4fr)) 92px 108px 86px auto; gap:10px 12px; align-items:end; padding:12px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); margin-bottom:10px;}
 .dr-row .filter-group{min-width:0;}
 .dr-row select{font-size:12.5px;}
 .dr-metros-out{display:flex; flex-direction:column; gap:6px;}
