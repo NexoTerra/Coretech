@@ -2239,32 +2239,85 @@ async function saveDailyReport() {
   }
   if (!entries.length) { showDrError('Agrega al menos una fila con herramientas, barrenos y longitud.'); return; }
 
+  if (drSaving) return; // ya hay un guardado en curso (doble clic / toque repetido)
+  drSaving = true;
   const saveBtn = document.getElementById('drSaveBtn');
   saveBtn.disabled = true; saveBtn.textContent = 'Guardando…';
+  let insertado = false;
   try {
-    await CTAuth.insertRows('produccion', entries);
-    for (const codigo of new Set(entries.map(e => e.codigo_marcado))) {
-      // una herramienta prestada sigue asignada a su equipo; solo si no tenía equipo se le asigna el del reporte
-      const pz = byCodigo.get(codigo);
-      if (pz && !pz.equipo) await CTAuth.updateMatch('piezas', { codigo_marcado: codigo }, { mina, equipo });
-      await refreshPiezaMetros(codigo);
+    // ¿ya hay guardada una fila igual? (típico de un reintento tras un aviso de error o una conexión lenta)
+    const repetidas = await filasYaGuardadas(entries, { fecha, mina, equipo });
+    if (repetidas.length) {
+      const lista = repetidas.slice(0, 6).map(r => `• ${r.cods.join(', ')} — ${fmtNum(r.barrenos)} barrenos × ${fmtNum(r.longitud, 2)} m${r.enEsteReporte ? ' (repetida dentro de este mismo reporte)' : ''}`).join('\n');
+      const mas = repetidas.length > 6 ? `\n• … y ${repetidas.length - 6} más` : '';
+      const ok = confirm(`${repetidas.length === 1 ? 'Ya existe una fila igual' : `Ya existen ${repetidas.length} filas iguales`} en ${equipo} el ${fmtFechaLarga(fecha)} (mismas herramientas, barrenos, longitud, operador y turno):\n\n${lista}${mas}\n\nSi el reporte ya se guardó, NO lo guardes otra vez: revisa la tabla "Reportes de…" que está debajo del formulario.\n\n¿Guardar de todas formas?`);
+      if (!ok) {
+        showDrError('No se guardó: ya existe una fila igual. Revisa la tabla de reportes de la fecha, debajo del formulario; si falta algo, corrige el formulario y guarda de nuevo.');
+        await renderTodayReports();
+        return;
+      }
     }
-    dailyReportState.activeTools = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
-    renderDrRows(true);
-    prefillFromLastReport();
-    await renderTodayReports();
+    await CTAuth.insertRows('produccion', entries);
+    insertado = true; // desde aquí las filas YA están guardadas, pase lo que pase con los pasos siguientes
     const nFilas = new Set(entries.map(e => e.grupo_id)).size;
-    const okEl = document.getElementById('drSuccess');
-    okEl.hidden = false;
-    okEl.textContent = `Reporte guardado: ${nFilas} fila${nFilas === 1 ? '' : 's'} el ${fmtFechaLarga(fecha)}.`;
+    let avisoPost = null;
+    try {
+      for (const codigo of new Set(entries.map(e => e.codigo_marcado))) {
+        // una herramienta prestada sigue asignada a su equipo; solo si no tenía equipo se le asigna el del reporte
+        const pz = byCodigo.get(codigo);
+        if (pz && !pz.equipo) await CTAuth.updateMatch('piezas', { codigo_marcado: codigo }, { mina, equipo });
+        await refreshPiezaMetros(codigo);
+      }
+      dailyReportState.activeTools = await CTAuth.fetchMatch('piezas', { mina, estado: 'ACTIVO' });
+    } catch (e2) { avisoPost = e2.message || String(e2); }
+    renderDrRows(true); // el formulario se limpia siempre: el reporte ya quedó guardado
+    prefillFromLastReport();
+    try { await renderTodayReports(); } catch (e3) { /* la tabla de abajo se actualiza al volver a entrar */ }
+    if (avisoPost) {
+      showDrError(`El reporte SÍ quedó guardado (${nFilas} fila${nFilas === 1 ? '' : 's'} el ${fmtFechaLarga(fecha)}), pero no se pudieron actualizar los metros acumulados de las herramientas (${avisoPost}). No lo guardes otra vez; avisa al administrador.`);
+    } else {
+      const okEl = document.getElementById('drSuccess');
+      okEl.hidden = false;
+      okEl.textContent = `Reporte guardado: ${nFilas} fila${nFilas === 1 ? '' : 's'} el ${fmtFechaLarga(fecha)}.`;
+    }
   } catch (e) {
     showDrError(/column|schema cache|grupo_id/i.test(e.message || '')
       ? 'Falta actualizar la base de datos para el nuevo formato de reporte. Pide al administrador que ejecute la migración "supabase_schema_reporte_filas.sql" en Supabase.'
-      : 'No se pudo guardar el reporte (' + e.message + ').');
+      : (insertado ? 'El reporte quedó guardado, pero falló un paso posterior (' + e.message + '). No lo guardes otra vez.'
+        : 'No se pudo guardar el reporte (' + e.message + '). Antes de intentarlo de nuevo, revisa la tabla de reportes de la fecha, debajo del formulario: si la fila ya aparece, no la guardes otra vez.'));
   } finally {
+    drSaving = false;
     saveBtn.textContent = 'Guardar reporte';
     updateDrTotals();
   }
+}
+
+// Filas del reporte que se van a guardar y que ya existen guardadas (mismo equipo y fecha, mismas herramientas,
+// barrenos, longitud, operador, turno y jornada), o que están repetidas dentro del mismo reporte.
+let drSaving = false;
+async function filasYaGuardadas(entries, { fecha, mina, equipo }) {
+  const firma = (cods, barrenos, longitud, e) => [Array.from(cods).sort().join('|'), Number(barrenos), Number(longitud), e.operador || '', e.turno || '', e.jornada || ''].join('#');
+  const existentes = new Set();
+  const grupos = new Map();
+  (await CTAuth.fetchMatch('produccion', { fecha, mina, equipo })).forEach(r => {
+    if (!r.grupo_id) return; // datos importados del Excel: no tienen fila de reporte
+    if (!grupos.has(r.grupo_id)) grupos.set(r.grupo_id, { cods: [], r });
+    grupos.get(r.grupo_id).cods.push(r.codigo_marcado);
+  });
+  grupos.forEach(({ cods, r }) => existentes.add(firma(cods, r.barrenos, r.longitud, r)));
+  const nuevas = new Map();
+  entries.forEach(e => {
+    if (!nuevas.has(e.grupo_id)) nuevas.set(e.grupo_id, { cods: [], e });
+    nuevas.get(e.grupo_id).cods.push(e.codigo_marcado);
+  });
+  const vistas = new Set(), repetidas = [];
+  nuevas.forEach(({ cods, e }) => {
+    const f = firma(cods, e.barrenos, e.longitud, e);
+    if (existentes.has(f)) repetidas.push({ cods, barrenos: e.barrenos, longitud: e.longitud, enEsteReporte: false });
+    else if (vistas.has(f)) repetidas.push({ cods, barrenos: e.barrenos, longitud: e.longitud, enEsteReporte: true });
+    vistas.add(f);
+  });
+  return repetidas;
 }
 
 async function renderTodayReports() {
