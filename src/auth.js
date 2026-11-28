@@ -185,6 +185,21 @@ async function insertRows(name, rows) {
   return inserted;
 }
 
+// Historial de longitudes por barreno ya cargadas: una fila por fila de reporte (la herramienta principal),
+// solo las columnas equipo y longitud. Alimenta el semáforo de longitud del reporte diario.
+async function fetchHistorialLongitud() {
+  const PAGE = 1000;
+  let all = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client.from('produccion').select('equipo,longitud')
+      .not('grupo_id', 'is', null).eq('es_primario', true).not('longitud', 'is', null).range(from, from + PAGE - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < PAGE) break;
+  }
+  return all;
+}
+
 async function updateMatch(name, match, patch) {
   let q = client.from(name).update(patch);
   Object.entries(match).forEach(([col, val]) => { q = q.eq(col, val); });
@@ -220,7 +235,7 @@ window.CTAuth = {
   listProfiles, updateProfileRole, updateProfileExtraRoles, updateProfileMines, removeProfile,
   loadConciliacionRemote, setConciliacion,
   fetchTable, replaceTable, getDatasetMeta, setDatasetMeta,
-  fetchMatch, fetchLast, insertRows, updateMatch, deleteMatch,
+  fetchMatch, fetchLast, fetchHistorialLongitud, insertRows, updateMatch, deleteMatch,
   pendingAuthType: PENDING_AUTH_TYPE,
   cameFromAuthLink: CAME_FROM_AUTH_LINK,
   onAuthStateChange: (cb) => client.auth.onAuthStateChange(cb),

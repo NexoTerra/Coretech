@@ -1709,6 +1709,7 @@ async function enterDigitalizadorScreen() {
 
   wireDailyReportEvents();
   cargarOperadoresSugeridos();
+  cargarHistorialLongitud();
   cargarBajasRegistradas();
   loadBajaTools().then(renderBajaList).catch(() => {
     const note = document.getElementById('bajaEmptyNote'); note.hidden = false; note.textContent = 'No se pudo cargar la lista de herramientas activas.';
@@ -2108,6 +2109,62 @@ function drSlotOptions(slot, tools, selected) {
   }
   return h;
 }
+// ---------- Semáforo de longitud por barreno ----------
+// Se calibra con las longitudes ya cargadas (una por fila de reporte):
+//  verde    = hasta la longitud que ese taladro usa habitualmente (la mayor usada en 3 o más filas);
+//  amarillo = mayor a la que suele usar ese taladro, pero ya usada en otros: revisar antes de guardar;
+//  rojo     = mayor que cualquier longitud registrada en el historial: PELIGRO, exige doble verificación;
+//  bloqueo  = fuera de lo físicamente posible (menos de 0,5 m o más de 6 m): no se puede guardar.
+const DR_LONG_BLOQUEO_MIN = 0.5, DR_LONG_BLOQUEO_MAX = 6;
+let drLongHist = null; // { global: Map(long -> filas), porEquipo: Map(equipo -> { n, cuenta: Map }) }
+function drConstruirHistLong(rows) {
+  const h = { global: new Map(), porEquipo: new Map() };
+  rows.forEach(r => drAnotarLong(h, r.equipo, Number(r.longitud)));
+  return h;
+}
+function drAnotarLong(h, equipo, l) {
+  if (!(l > 0)) return;
+  const k = Math.round(l * 1000) / 1000;
+  h.global.set(k, (h.global.get(k) || 0) + 1);
+  if (!h.porEquipo.has(equipo)) h.porEquipo.set(equipo, { n: 0, cuenta: new Map() });
+  const e = h.porEquipo.get(equipo); e.n++; e.cuenta.set(k, (e.cuenta.get(k) || 0) + 1);
+}
+const drMaxConMinimo = (mapa, minimo) => { let m = null; mapa.forEach((n, l) => { if (n >= minimo && (m === null || l > m)) m = l; }); return m; };
+function semaforoLongitud(equipo, l) {
+  if (!(l > 0)) return null;
+  if (l < DR_LONG_BLOQUEO_MIN || l > DR_LONG_BLOQUEO_MAX) return { nivel: 'bloqueo' };
+  const h = drLongHist || drConstruirHistLong([]);
+  const maxGlobal = drMaxConMinimo(h.global, 3) ?? 3.6;     // la mayor longitud realmente usada (no un error aislado)
+  const comun = drMaxConMinimo(h.global, 20) ?? 3.4;        // la mayor longitud de uso corriente en todos los taladros
+  const e = h.porEquipo.get(equipo);
+  const usual = (e && e.n >= 10) ? (drMaxConMinimo(e.cuenta, 3) ?? comun) : comun;
+  const EPS = 1e-6;
+  if (l > maxGlobal + EPS) return { nivel: 'rojo', maxGlobal, usual };
+  if (l > usual + EPS) return { nivel: 'amarillo', maxGlobal, usual };
+  return { nivel: 'verde', maxGlobal, usual };
+}
+function drFmtLong(v) { return fmtNum(v, 2).replace(/,?0+$/, '').replace(/,$/, ''); }
+function actualizarSemaforoFila(rowEl) {
+  const box = rowEl.querySelector('.dr-sem'); if (!box) return;
+  const raw = rowEl.querySelector('.dr-longitud').value;
+  const l = raw === '' ? null : Number(raw);
+  const s = l ? semaforoLongitud(dailyReportState.equipo, l) : null;
+  rowEl.classList.remove('sem-amarillo', 'sem-rojo');
+  box.className = 'dr-sem'; box.textContent = '';
+  if (!s) return;
+  box.classList.add(s.nivel === 'bloqueo' ? 'rojo' : s.nivel);
+  if (s.nivel === 'verde') box.textContent = `Habitual en ${dailyReportState.equipo}`;
+  else if (s.nivel === 'amarillo') { rowEl.classList.add('sem-amarillo'); box.textContent = `Mayor a la que suele usar ${dailyReportState.equipo} (hasta ${drFmtLong(s.usual)} m): revísala`; }
+  else if (s.nivel === 'rojo') { rowEl.classList.add('sem-rojo'); box.textContent = `PELIGRO: mayor que cualquier longitud registrada (máx. ${drFmtLong(s.maxGlobal)} m). Revisa el formato antes de guardar`; }
+  else { rowEl.classList.add('sem-rojo'); box.textContent = `No válida: debe estar entre ${drFmtLong(DR_LONG_BLOQUEO_MIN)} y ${drFmtLong(DR_LONG_BLOQUEO_MAX)} m por barreno`; }
+}
+function refrescarSemaforos() { document.querySelectorAll('#drRowsBody .dr-row').forEach(actualizarSemaforoFila); }
+async function cargarHistorialLongitud() {
+  try { drLongHist = drConstruirHistLong(CTAuth.fetchHistorialLongitud ? await CTAuth.fetchHistorialLongitud() : []); }
+  catch (e) { drLongHist = drConstruirHistLong([]); /* sin historial: el semáforo usa los valores por defecto */ }
+  refrescarSemaforos();
+}
+
 function drRowHtml(vals) {
   const tools = drEquipoTools();
   const tipo = vals.tipo ?? (document.getElementById('drTipo').value || '');
@@ -2115,9 +2172,10 @@ function drRowHtml(vals) {
   const tipoSel = `<div class="filter-group"><label>Tipo</label><select class="dr-tipo"><option value="">Elige…</option>${TIPOS_PERFORACION.map(t => `<option value="${esc(t)}" ${t === tipo ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
   return `<div class="dr-row">${tipoSel}${selects}
     <div class="filter-group"><label>Barrenos</label><input type="number" class="dr-barrenos" min="0" step="1" inputmode="numeric" value="${vals.barrenos ?? ''}"></div>
-    <div class="filter-group"><label>Longitud (m)</label><input type="number" class="dr-longitud" min="0" max="4.5" step="0.01" inputmode="decimal" value="${vals.longitud ?? ''}"></div>
+    <div class="filter-group"><label>Longitud (m)</label><input type="number" class="dr-longitud" min="0" step="0.01" inputmode="decimal" value="${vals.longitud ?? ''}"></div>
     <div class="dr-metros-out"><span class="dr-metros-label">Metros</span><span class="dr-metros-val">0</span></div>
     <button type="button" class="small ghost danger dr-row-remove">Quitar</button>
+    <div class="dr-sem" aria-live="polite"></div>
   </div>`;
 }
 function drReadRows() {
@@ -2239,6 +2297,7 @@ function updateDrTotals() {
   });
   document.getElementById('drTotalMetros').textContent = `${fmtNum(total, 2)} m en ${n} fila${n === 1 ? '' : 's'}`;
   document.getElementById('drSaveBtn').disabled = total <= 0;
+  refrescarSemaforos();
 }
 
 function showDrError(msg) {
@@ -2263,6 +2322,7 @@ async function saveDailyReport() {
   const head = { fecha, mina, tipo, equipo, operador, operador2: v('drOperador2') || null, turno: v('drTurno') || null, jornada: v('drJornada') || null, reporte_no: v('drReporteNo') || null, frente: v('drFrente') || null };
   const entries = [];
   const avisos = [];
+  const rojos = [];
   const rows = drReadRows();
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -2272,11 +2332,14 @@ async function saveDailyReport() {
     if (!(r.barrenos > 0) || !(r.longitud > 0)) { showDrError(`Fila ${i + 1}: escribe la cantidad de barrenos y la longitud.`); return; }
     // Validaciones de digitación (un 240 en vez de 2,4 infló el rendimiento de 4 herramientas): la longitud es por barreno.
     if (!Number.isInteger(r.barrenos)) { showDrError(`Fila ${i + 1}: los barrenos deben ser un número entero (escribiste ${r.barrenos}).`); return; }
-    if (r.longitud < 0.5 || r.longitud > 4.5) {
-      const sug = [r.longitud / 100, r.longitud / 10].find(v => v >= 0.5 && v <= 4.5);
-      showDrError(`Fila ${i + 1}: la longitud ${fmtNum(r.longitud, 2)} m por barreno no es válida (debe estar entre 0,5 y 4,5 m).${sug ? ` ¿Quisiste escribir ${fmtNum(sug, 2)}?` : ''}`);
+    const sem = semaforoLongitud(equipo, r.longitud);
+    if (sem.nivel === 'bloqueo') {
+      const sug = [r.longitud / 100, r.longitud / 10].find(v => { const s2 = semaforoLongitud(equipo, v); return s2 && (s2.nivel === 'verde' || s2.nivel === 'amarillo'); });
+      showDrError(`Fila ${i + 1}: la longitud ${fmtNum(r.longitud, 2)} m por barreno no es válida (debe estar entre ${drFmtLong(DR_LONG_BLOQUEO_MIN)} y ${drFmtLong(DR_LONG_BLOQUEO_MAX)} m).${sug ? ` ¿Quisiste escribir ${fmtNum(sug, 2)}?` : ''}`);
       return;
     }
+    if (sem.nivel === 'rojo') rojos.push({ fila: i + 1, l: r.longitud, maxGlobal: sem.maxGlobal });
+    else if (sem.nivel === 'amarillo') avisos.push(`Fila ${i + 1}: longitud ${drFmtLong(r.longitud)} m, mayor a la que suele usar ${equipo} (hasta ${drFmtLong(sem.usual)} m)`);
     const tipoFila = r.tipo || tipo; // cada fila lleva su propio tipo (avance, escariado o sostenimiento), como el formato en papel
     if (!tipoFila) { showDrError(`Fila ${i + 1}: elige el tipo de perforación (avance, escariado o sostenimiento).`); return; }
     const umbralBarrenos = tipoFila === 'SOSTENIMIENTO' ? 80 : 40;
@@ -2289,6 +2352,18 @@ async function saveDailyReport() {
     });
   }
   if (!entries.length) { showDrError('Agrega al menos una fila con herramientas, barrenos y longitud.'); return; }
+  // Semáforo ROJO: longitud mayor que cualquier otra registrada. Doble verificación: confirmar la alerta y volver a escribir el valor.
+  for (const rj of rojos) {
+    if (!confirm(`PELIGRO — Fila ${rj.fila}: la longitud ${drFmtLong(rj.l)} m por barreno es MAYOR que cualquier longitud registrada (máximo histórico: ${drFmtLong(rj.maxGlobal)} m).\n\nRevisa el formato físico. Si hay un error de digitación (por ejemplo 33 en vez de 3,3), cancela y corrígela.\n\n¿La longitud es correcta?`)) {
+      showDrError(`No se guardó: revisa la longitud de la fila ${rj.fila}.`);
+      return;
+    }
+    const resp = prompt(`Segunda verificación — Fila ${rj.fila}: escribe la longitud (${drFmtLong(rj.l)}) para confirmar que es correcta.`);
+    if (resp === null || Math.abs(Number(String(resp).trim().replace(',', '.')) - rj.l) > 1e-9) {
+      showDrError(`No se guardó: la longitud de la fila ${rj.fila} no se confirmó (debías escribir ${drFmtLong(rj.l)}).`);
+      return;
+    }
+  }
   if (avisos.length && !confirm(`Revisa estos valores antes de guardar:\n\n${avisos.map(a => '• ' + a).join('\n')}\n\nSi hay un error de digitación (por ejemplo 100 en vez de 10), cancela y corrígelo: una fila así infla el rendimiento de sus 4 herramientas.\n\n¿Guardar tal como está?`)) {
     showDrError('No se guardó: revisa los barrenos y la longitud de las filas señaladas.');
     return;
@@ -2314,6 +2389,7 @@ async function saveDailyReport() {
     }
     await CTAuth.insertRows('produccion', entries);
     insertado = true; // desde aquí las filas YA están guardadas, pase lo que pase con los pasos siguientes
+    if (drLongHist) { const vistos = new Set(); entries.forEach(e => { if (!vistos.has(e.grupo_id)) { vistos.add(e.grupo_id); drAnotarLong(drLongHist, e.equipo, Number(e.longitud)); } }); }
     const nFilas = new Set(entries.map(e => e.grupo_id)).size;
     let avisoPost = null;
     try {
@@ -3471,10 +3547,12 @@ async function dataCheckAtipicos() {
     filas.forEach(x => { const k = x.f.equipo + '|' + x.f.tipo; if (!bar.has(k)) bar.set(k, []); bar.get(k).push(Number(x.f.barrenos) || 0); });
     const p95 = (k) => { const a = (bar.get(k) || []).slice().sort((u, v) => u - v); return a.length ? a[Math.min(a.length - 1, Math.floor(a.length * 0.95))] : 0; };
     const lista = [];
+    const cuentaL = new Map(); filas.forEach(x => { const l = Number(x.f.longitud) || 0; cuentaL.set(l, (cuentaL.get(l) || 0) + 1); });
+    const maxL = drMaxConMinimo(cuentaL, 3) ?? 3.6; // la mayor longitud realmente usada (en 3 o más filas)
     filas.forEach(x => {
       const b = Number(x.f.barrenos) || 0, l = Number(x.f.longitud) || 0, m = Number(x.f.metros) || 0, p = p95(x.f.equipo + '|' + x.f.tipo);
       const motivos = [];
-      if (l < 0.5 || l > 4.5) motivos.push(`longitud ${fmtNum(l, 2)} m`);
+      if (l < DR_LONG_BLOQUEO_MIN || l > maxL + 1e-6) motivos.push(`longitud ${fmtNum(l, 2)} m (mayor que cualquier uso habitual, máx. ${drFmtLong(maxL)} m)`);
       if (b > Math.max(40, p * 1.8)) motivos.push(`${fmtNum(b)} barrenos (lo habitual del equipo: hasta ${fmtNum(p)})`);
       if (m > 150) motivos.push(`${fmtNum(m, 0)} m en una fila`);
       if (Math.abs(m - b * l) > 0.05) motivos.push('metros ≠ barrenos × longitud');

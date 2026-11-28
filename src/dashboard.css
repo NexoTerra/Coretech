@@ -390,6 +390,17 @@ footer b{color:var(--text-dim);}
 .dr-metros-val{font-family:var(--font-title); font-weight:800; font-size:17px; color:var(--navy); font-variant-numeric:tabular-nums; padding:6px 0;}
 :root[data-theme="dark"] .dr-metros-val, :root:not([data-theme="light"]) .dr-metros-val{color:var(--cyan3);}
 @media (max-width:1180px){ .dr-row{grid-template-columns:repeat(2,minmax(0,1fr));} }
+/* semáforo de longitud por barreno: franja a todo el ancho de la fila */
+.dr-sem{grid-column:1 / -1; display:none; align-items:center; gap:8px; font-size:12.5px; font-weight:700; line-height:1.35; padding:7px 10px; border-radius:8px; border:1px solid transparent;}
+.dr-sem::before{content:''; flex:none; width:11px; height:11px; border-radius:50%; background:currentColor;}
+.dr-sem.verde{display:flex; color:#1E8E4E; background:rgba(30,158,83,.10); border-color:rgba(30,158,83,.25);}
+.dr-sem.amarillo{display:flex; color:#9A6700; background:rgba(245,176,32,.16); border-color:rgba(245,176,32,.5);}
+.dr-sem.rojo{display:flex; color:#C0341D; background:rgba(229,83,61,.12); border-color:rgba(229,83,61,.5);}
+.dr-row.sem-amarillo .dr-longitud{border-color:#E0A21B; box-shadow:0 0 0 2px rgba(245,176,32,.25);}
+.dr-row.sem-rojo .dr-longitud{border-color:#D8402A; box-shadow:0 0 0 2px rgba(229,83,61,.28);}
+:root[data-theme="dark"] .dr-sem.verde, :root:not([data-theme="light"]) .dr-sem.verde{color:#5BD08A;}
+:root[data-theme="dark"] .dr-sem.amarillo, :root:not([data-theme="light"]) .dr-sem.amarillo{color:#F5C451;}
+:root[data-theme="dark"] .dr-sem.rojo, :root:not([data-theme="light"]) .dr-sem.rojo{color:#FF8A75;}
 
 /* ---- pantalla de Datos (administrador) ---- */
 #dataScreen{max-width:1400px !important;}
