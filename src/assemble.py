@@ -15,9 +15,10 @@ def safe_script(js_text):
     return js_text.replace('</script', '<\\/script')
 
 template = read('template.html')
-css = read('dashboard.css')
+css = read('fonts.css') + '\n' + read('dashboard.css')   # Barlow incrustada + estilos del tablero
 logo_navy_b64 = read_b64('logo_navy.png')
 logo_white_b64 = read_b64('logo_white.png')
+emblem_white_b64 = read_b64('emblem_white.png')           # emblema del logo: marca de agua del login y del panel principal
 
 data_bundle_json = read('data_bundle_v4.json')
 agg_js = read('agg.js')
@@ -33,6 +34,7 @@ html = template
 html = html.replace('__CSS__', css)
 html = html.replace('__LOGO_NAVY__', logo_navy_b64)
 html = html.replace('__LOGO_WHITE__', logo_white_b64)
+html = html.replace('__EMBLEM_WHITE__', emblem_white_b64)
 html = html.replace('__DATA_BUNDLE_JSON__', safe_script(data_bundle_json))
 html = html.replace('__AGG_JS__', safe_script(agg_js))
 html = html.replace('__IMPORTER_JS__', safe_script(importer_js))

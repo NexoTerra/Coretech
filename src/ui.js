@@ -4,7 +4,7 @@
 const MONTH_ABBR = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
 
 const MINES = [
-  { slug: 'segovia', label: 'Aris Mining Segovia', sub: 'Sandra K · El Silencio · Providencia', icon: '⛏️' },
+  { slug: 'segovia', label: 'Aris Mining Segovia', sub: 'Sandra K, El Silencio y Providencia', icon: '' },
 ];
 // 'SANDRA K' -> 'Sandra K' (los nombres de mina se guardan en mayúsculas)
 function tituloMina(n) { return String(n).toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase()); }
@@ -126,8 +126,13 @@ function searchDropdown(btnId, panelId, searchId, listId, options, filterKey, la
     });
   }
   function updateBtnLabel() {
-    const n = filters[panel._ddFilterKey].length;
-    btn.querySelector('.dd-label').textContent = n ? `${panel._ddLabelPrefix} (${n})` : panel._ddLabelPrefix;
+    const arr = filters[panel._ddFilterKey], n = arr.length;
+    const todos = DD_TODOS[panel._ddFilterKey] || 'Todos';
+    let txt = todos;
+    if (n === 1) { const o = (panel._ddOptions || []).find(o => o.value === arr[0]); txt = o ? o.label : String(arr[0]); }
+    else if (n > 1) txt = `${n} ${todos === 'Todas' ? 'seleccionadas' : 'seleccionados'}`;
+    btn.querySelector('.dd-label').textContent = txt;
+    btn.title = n ? `${panel._ddLabelPrefix}: ${txt}` : '';
   }
   // Lets other filter controls (e.g. los chips de Sarta) refrescar este
   // dropdown después de cambiar filters[filterKey] por su cuenta, sin tener
@@ -223,11 +228,12 @@ function findHerrForRef(refIdx) {
   return found;
 }
 
+const DD_TODOS = { mina: 'Todas', tipo: 'Todos', estado: 'Todos', equipo: 'Todos', operador: 'Todos', sarta: 'Todas', ref: 'Todas', months: 'Todos' };
 function syncMonthBtnLabel() {
   const btn = document.getElementById('monthBtn');
   if (!btn) return;
   const n = filters.months.length;
-  btn.querySelector('.dd-label').textContent = n ? `Mes (${n})` : 'Mes';
+  btn.querySelector('.dd-label').textContent = n === 0 ? 'Todos' : n === 1 ? ymLabel(filters.months[0]) : `${n} seleccionados`;
   document.querySelectorAll('#monthList input[type="checkbox"]').forEach(cb => { cb.checked = false; });
 }
 
@@ -278,7 +284,7 @@ function renderKPICards(kpis, vidaUtil, activasHoy, activasSinReporte) {
     { label: 'Referencias con metros', value: fmtNum(kpis.referenciasActivas), sub: `${fmtNum(kpis.piezasActivas)} piezas con metros en el periodo filtrado` },
     { label: 'Herramientas activas hoy', value: fmtNum(activasHoy), sub: `Piezas en estado Activo en la mina — no depende del rango de fechas${activasSinReporte ? ` · ${fmtNum(activasSinReporte)} sin reportes en 45 días o más` : ''}` },
     { label: 'Metros / herramienta activa', value: fmtNum(Math.round(avgPerToolMonth)) + ' <small>m/mes</small>', sub: 'Promedio del periodo filtrado' },
-    { label: 'Cumplimiento global', value: (kpis.cumplimientoGlobal !== null ? kpis.cumplimientoGlobal.toFixed(1) + '<small>%</small>' : '—'), sub: `${kpis.nCiclosCerrados} piezas con ciclo cerrado${kpis.cumplimientoMediana !== null && kpis.cumplimientoMediana !== undefined ? ` · mediana ${kpis.cumplimientoMediana.toFixed(0)}% · ponderado ${kpis.cumplimientoPonderado.toFixed(0)}%` : ''}` },
+    { label: 'Cumplimiento global', meter: kpis.cumplimientoGlobal, value: (kpis.cumplimientoGlobal !== null ? fmtNum(kpis.cumplimientoGlobal, 1) + '<small>%</small>' : '—'), sub: `${kpis.nCiclosCerrados} piezas con ciclo cerrado${kpis.cumplimientoMediana !== null && kpis.cumplimientoMediana !== undefined ? ` · mediana ${kpis.cumplimientoMediana.toFixed(0)}% · ponderado ${kpis.cumplimientoPonderado.toFixed(0)}%` : ''}` },
   ];
   if (!presentationMode) {
     cards.push({ label: 'Oportunidad recuperable', value: 'USD ' + fmtCompact(Math.round(kpis.recuperableUSD)), sub: `${fmtCompact(kpis.recuperableM)} m de herramienta que faltaron en piezas dadas de baja antes de cumplir su garantía (no son metros perforados)` });
@@ -286,9 +292,26 @@ function renderKPICards(kpis, vidaUtil, activasHoy, activasSinReporte) {
   cards.push({ label: 'Vida útil promedio', value: (vidaUtil.mediaDias !== null ? fmtNum(Math.round(vidaUtil.mediaDias)) + ' <small>días</small>' : '—'), sub: vidaUtil.n ? `mediana ${fmtNum(Math.round(vidaUtil.medianaDias))} días · ${fmtNum(vidaUtil.n)} piezas con ambas fechas` : 'sin piezas con fecha de inicio y de baja' });
   row.innerHTML = '';
   cards.forEach(c => {
-    row.appendChild(el(`<div class="card kpi ${c.accent ? 'accent' : ''}">
+    if (c.accent) {
+      // protagonista del tablero: metros perforados con la tira mensual (registro de perforación)
+      const vals = kpis.months.map(ym => kpis.byMonth.get(ym) || 0), max = Math.max(...vals, 1);
+      const bars = kpis.months.map((ym, i) => `<i${i === kpis.months.length - 1 ? ' class="now"' : ''} style="height:${Math.max(vals[i] / max * 100, 4).toFixed(1)}%" data-tip="${esc(ymLabel(ym) + ': ' + fmtNum(vals[i]) + ' m')}" tabindex="0"></i>`).join('');
+      const caps = kpis.months.length ? `<div class="caps"><span>${esc(ymLabel(kpis.months[0]))}</span><span>${esc(ymLabel(kpis.months[kpis.months.length - 1]))}</span></div>` : '';
+      row.appendChild(el(`<div class="kpi kpi-hero">
+        <div><div class="label">${esc(c.label)}</div><div class="value">${c.value}</div><div class="sub">${esc(c.sub)}</div></div>
+        <div class="kpi-strata"><div class="bars" role="img" aria-label="Metros perforados por mes">${bars}</div>${caps}</div>
+      </div>`));
+      return;
+    }
+    let meter = '';
+    if (c.meter !== undefined && c.meter !== null) {
+      const MAXM = 120, fill = Math.min(c.meter, MAXM) / MAXM * 100;
+      meter = `<div class="kpi-meter" role="img" aria-label="Cumplimiento ${c.meter.toFixed(0)} por ciento; aceptable 85, ideal 100"><div class="fill" style="width:${fill.toFixed(1)}%; background:${rendColor(c.meter)}"></div><i class="tick" style="left:${(85 / MAXM * 100).toFixed(1)}%"></i><i class="tick" style="left:${(100 / MAXM * 100).toFixed(1)}%"></i></div><div class="kpi-meter-scale"><span style="left:${(85 / MAXM * 100).toFixed(1)}%">85</span><span style="left:${(100 / MAXM * 100).toFixed(1)}%">100</span></div>`;
+    }
+    row.appendChild(el(`<div class="kpi">
       <div class="label">${esc(c.label)}</div>
       <div class="value">${c.value}</div>
+      ${meter}
       <div class="sub">${esc(c.sub)}</div>
     </div>`));
   });
@@ -298,19 +321,18 @@ function renderKPICards(kpis, vidaUtil, activasHoy, activasSinReporte) {
 function renderMonthlyChart(kpis) {
   const partial = computePartialMonths(BUNDLE);
   const items = kpis.months.map(ym => ({ label: ymLabel(ym), value: kpis.byMonth.get(ym), partial: partial.has(ym) }));
-  document.getElementById('chartMonthly').innerHTML = svgVBarChart(items, { width: containerWidth('chartMonthly'), color: 'var(--blue)', partialColor: 'var(--gray3)' });
+  document.getElementById('chartMonthly').innerHTML = svgVBarChart(items, { width: containerWidth('chartMonthly'), color: 'var(--s1)' });
 }
 function renderActiveToolsChart(kpis) {
   const partial = computePartialMonths(BUNDLE);
   const items = kpis.months.map(ym => ({ label: ymLabel(ym), value: kpis.toolsByMonth.get(ym).size, partial: partial.has(ym) }));
-  document.getElementById('chartActiveTools').innerHTML = svgVBarChart(items, { width: containerWidth('chartActiveTools'), color: 'var(--green)', partialColor: 'var(--gray3)' });
+  document.getElementById('chartActiveTools').innerHTML = svgVBarChart(items, { width: containerWidth('chartActiveTools'), color: 'var(--s1)' });
 }
 function renderToolsChart(rows) {
   const top = rows.slice(0, 10);
-  const items = top.map((r, i) => ({ label: r.herramienta, value: r.metros, color: RAMP[i % RAMP.length], valueLabel: fmtCompact(r.metros) + ' m' }));
+  const items = top.map((r) => ({ label: r.herramienta, value: r.metros, valueLabel: fmtCompact(r.metros) + ' m' }));
   document.getElementById('chartTools').innerHTML = svgHBarChart(items, { width: containerWidth('chartTools'), rowH: 24 });
 }
-const RAMP = ['var(--ramp1)', 'var(--ramp2)', 'var(--ramp3)', 'var(--ramp4)'];
 function renderRendimientoChart(rows) {
   const top = rows.slice().sort((a, b) => b.metrosPerforados - a.metrosPerforados).slice(0, 12);
   const items = top.map(r => ({
@@ -559,7 +581,7 @@ function renderCPM(bundle, life) {
   ];
   const row = document.getElementById('cpmKpiRow');
   row.innerHTML = '';
-  cards.forEach(c => row.appendChild(el(`<div class="card kpi"><div class="label">${esc(c.label)}</div><div class="value">${c.value}</div><div class="sub">${esc(c.sub)}</div></div>`)));
+  cards.forEach(c => row.appendChild(el(`<div class="kpi"><div class="label">${esc(c.label)}</div><div class="value">${c.value}</div><div class="sub">${esc(c.sub)}</div></div>`)));
 
   const top = rows.filter(r => r.cpmReal !== null).slice().sort((a, b) => b.metrosTotales - a.metrosTotales).slice(0, 12);
   const items = top.map(r => ({
@@ -692,7 +714,7 @@ function renderGananciaPerdida(bundle, life) {
     { label: 'Ganancia total (> 100%)', value: 'USD ' + fmtNum(Math.round(totalGanancia)), sub: 'Piezas dadas de baja que superaron el metro ideal', accentCls: 'kpi-good' },
     { label: 'Neto', value: 'USD ' + fmtNum(Math.round(totalGanancia - totalPerdida)), sub: 'Ganancia menos pérdida de todas las herramientas', accentCls: (totalGanancia - totalPerdida) >= 0 ? 'kpi-good' : 'kpi-bad' },
     { label: 'Herramientas con neto negativo', value: 'USD ' + fmtNum(Math.round(netoNegativo)), sub: 'Suma del neto de las herramientas donde la pérdida supera la ganancia', accentCls: netoNegativo < 0 ? 'kpi-bad' : 'kpi-good' },
-  ].forEach(c => kpiRow.appendChild(el(`<div class="card kpi ${c.accentCls}"><div class="label">${esc(c.label)}</div><div class="value">${c.value}</div><div class="sub">${esc(c.sub)}</div></div>`)));
+  ].forEach(c => kpiRow.appendChild(el(`<div class="kpi ${c.accentCls}"><div class="label">${esc(c.label)}</div><div class="value">${c.value}</div><div class="sub">${esc(c.sub)}</div></div>`)));
 
   const table = document.getElementById('gpTable');
   const thead = `<tr><th>Referencia</th><th>Herramienta</th><th class="num">Piezas &lt;85%</th><th class="num">Pérdida (m)</th><th class="num">Pérdida (USD)</th><th class="num">Piezas &gt;100%</th><th class="num">Ganancia (m)</th><th class="num">Ganancia (USD)</th><th class="num">Neto (USD)</th></tr>`;
@@ -1057,7 +1079,7 @@ function renderTable(prod, life) {
 function renderMeta(kpis) {
   const months = kpis.months;
   const range = months.length ? `${ymLabel(months[0])} – ${ymLabel(months[months.length - 1])}` : 'sin datos';
-  document.getElementById('subtitle').textContent = `Rango de datos: ${range} · ${fmtNum(currentProd.length)} registros diarios · ${fmtNum(currentLife.length)} piezas en el ciclo de vida`;
+  document.getElementById('subtitle').textContent = `Datos de ${range}: ${fmtNum(currentProd.length)} registros diarios y ${fmtNum(currentLife.length)} piezas en el ciclo de vida`;
   document.getElementById('footerMeta').textContent = `Fuente activa: ${BUNDLE.meta.source || '—'} · generado ${BUNDLE.meta.generated || '—'}.`;
 }
 
@@ -1126,7 +1148,7 @@ function initTheme() {
 }
 function updateThemeBtn() {
   const cur = document.documentElement.getAttribute('data-theme') || 'auto';
-  const label = { auto: '🌓 Auto', light: '☀️ Claro', dark: '🌙 Oscuro' }[cur];
+  const label = { auto: 'Tema: auto', light: 'Tema: claro', dark: 'Tema: oscuro' }[cur];
   document.getElementById('themeToggle').textContent = label;
 }
 function cycleTheme() {
@@ -1279,6 +1301,17 @@ function showScreen(name) {
 function mineInfo(slug) {
   return MINES.find(m => m.slug === slug) || { label: slug, sub: '' };
 }
+// Iconos de línea (trazo 1,7) del selector de módulo.
+const ICONOS = {
+  mina: '<svg viewBox="0 0 24 24"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></svg>',
+  presentacion: '<svg viewBox="0 0 24 24"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></svg>',
+  usuarios: '<svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  rendimiento: '<svg viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>',
+  reporte: '<svg viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>',
+  codigos: '<svg viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>',
+  falla: '<svg viewBox="0 0 24 24"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6"/><path d="M12 12v4"/><path d="M12 20h.01"/></svg>',
+  datos: '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>',
+};
 function renderHub() {
   const grid = document.getElementById('hubGrid');
   grid.innerHTML = '';
@@ -1294,18 +1327,18 @@ function renderHub() {
   const admin = hasRole('admin'), supervisor = hasRole('supervisor');
   // El tablero completo (con costos) y la presentación son del Administrador y del Visualizador.
   if (admin || hasRole('viewer')) {
-    MINES.forEach(m => { if (canSeeMine(m.slug)) add(m.icon, m.label, m.sub, () => enterMine(m.slug)); });
-    if (MINES.some(m => canSeeMine(m.slug))) add('📊', 'Presentación al cliente', 'Vista resumida, sin CPM ni cifras de pérdida', () => enterMine(MINES.find(m => canSeeMine(m.slug)).slug, { presentation: true }));
+    MINES.forEach(m => { if (canSeeMine(m.slug)) add(ICONOS.mina, m.label, m.sub, () => enterMine(m.slug)); });
+    if (MINES.some(m => canSeeMine(m.slug))) add(ICONOS.presentacion, 'Presentación al cliente', 'Vista resumida, sin CPM ni cifras de pérdida', () => enterMine(MINES.find(m => canSeeMine(m.slug)).slug, { presentation: true }));
   }
-  if (admin) add('👤', 'Gestión de usuarios', 'Roles y acceso por mina', enterUsersScreen);
+  if (admin) add(ICONOS.usuarios, 'Gestión de usuarios', 'Roles y acceso por mina', enterUsersScreen);
   // Cada módulo de campo aparece para quien tenga el rol correspondiente (el Administrador los tiene todos).
-  if (admin || supervisor || hasRole('tecnico')) add('📈', 'Panel de rendimiento', (admin || supervisor) ? 'Metraje y % de cumplimiento — las 3 minas, sin costos' : 'Metraje y % de cumplimiento de tu mina, sin costos', enterPerfScreen);
-  if (admin || hasRole('digitalizador')) add('📝', 'Reporte diario', 'Cargar metraje diario y dar de baja herramientas', enterDigitalizadorScreen);
+  if (admin || supervisor || hasRole('tecnico')) add(ICONOS.rendimiento, 'Panel de rendimiento', (admin || supervisor) ? 'Metraje y % de cumplimiento — las 3 minas, sin costos' : 'Metraje y % de cumplimiento de tu mina, sin costos', enterPerfScreen);
+  if (admin || hasRole('digitalizador')) add(ICONOS.reporte, 'Reporte diario', 'Cargar metraje diario y dar de baja herramientas', enterDigitalizadorScreen);
   if (admin || supervisor) {
-    add('🔧', 'Códigos y despachos', 'Registrar herramientas nuevas y despacharlas', enterToolsScreen);
-    add('📄', 'Informes de falla', 'Generar el informe de análisis de falla prematura', enterReportsScreen);
+    add(ICONOS.codigos, 'Códigos y despachos', 'Registrar herramientas nuevas y despacharlas', enterToolsScreen);
+    add(ICONOS.falla, 'Informes de falla', 'Generar el informe de análisis de falla prematura', enterReportsScreen);
   }
-  if (admin) add('🗄️', 'Datos', 'Ver y corregir la base de datos', enterDataScreen);
+  if (admin) add(ICONOS.datos, 'Datos', 'Ver y corregir la base de datos', enterDataScreen);
   if (!grid.children.length) {
     grid.innerHTML = '<div class="hub-empty">No tienes acceso a ningún módulo todavía. Pide a un administrador que te asigne acceso.</div>';
   }
@@ -3716,5 +3749,59 @@ document.querySelectorAll('.table-tabs button').forEach(b => b.addEventListener(
   renderAll();
 }
 
+// ============ tooltip de las gráficas ============
+// Las marcas llevan data-tip (texto "categoría: valor", varias líneas o JSON {h, r:[[color, serie, valor]]}).
+// El valor va en negrita y la categoría en secundario; el contenido se inserta con textContent (los nombres son datos).
+function initTooltips() {
+  const tip = document.createElement('div');
+  tip.className = 'ct-tip'; tip.hidden = true; tip.setAttribute('role', 'tooltip');
+  document.body.appendChild(tip);
+  let current = null;
+  const add = (cls, text) => { const d = document.createElement('div'); d.className = cls; d.textContent = text; tip.appendChild(d); };
+  const render = (raw) => {
+    tip.textContent = '';
+    let data = null;
+    if (raw.charAt(0) === '{') { try { data = JSON.parse(raw); } catch (e) { data = null; } }
+    if (data) {
+      add('tt-h', data.h);
+      data.r.forEach(([color, name, value]) => {
+        const row = document.createElement('div'); row.className = 'tt-row';
+        const k = document.createElement('i'); k.className = 'tt-key'; k.style.background = color;
+        const v = document.createElement('b'); v.textContent = value;
+        const nm = document.createElement('span'); nm.className = 'tt-n'; nm.textContent = name;
+        row.append(k, v, nm); tip.appendChild(row);
+      });
+      return;
+    }
+    const lines = raw.split('\n');
+    if (lines.length > 1) { add('tt-h', lines[0]); lines.slice(1).forEach(l => add('tt-v', l)); return; }
+    const i = raw.indexOf(': ');
+    if (i > 0) { add('tt-h', raw.slice(0, i)); add('tt-v', raw.slice(i + 2)); } else add('tt-v', raw);
+  };
+  const place = (x, y) => {
+    const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+    let left = x + pad, top = y + pad;
+    if (left + w > window.innerWidth - 8) left = Math.max(8, x - w - pad);
+    if (top + h > window.innerHeight - 8) top = Math.max(8, y - h - pad);
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  };
+  const hide = () => { tip.hidden = true; current = null; };
+  document.addEventListener('pointermove', (e) => {
+    const t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!t) { if (current) hide(); return; }
+    if (t !== current) { current = t; render(t.getAttribute('data-tip') || ''); tip.hidden = false; }
+    place(e.clientX, e.clientY);
+  });
+  document.addEventListener('focusin', (e) => {
+    const t = e.target && e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (!t) return;
+    current = t; render(t.getAttribute('data-tip') || ''); tip.hidden = false;
+    const r = t.getBoundingClientRect(); place(r.left + r.width / 2, r.top - 8);
+  });
+  document.addEventListener('focusout', hide);
+  window.addEventListener('scroll', hide, true);
+}
+
 document.addEventListener('DOMContentLoaded', initAuth);
+document.addEventListener('DOMContentLoaded', initTooltips);
 })();
