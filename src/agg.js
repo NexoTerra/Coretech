@@ -8,6 +8,10 @@
 
 const EPOCH_DEFAULT = '2020-01-01';
 
+// Códigos genéricos que NO son una pieza física (acumulan metros de varias piezas sin código, p. ej. "NN"):
+// sus metros siguen contando en la producción, pero no se evalúan como pieza (rendimiento, activas, CPM).
+const PIEZAS_GENERICAS = new Set(['NN']);
+
 function dayToDate(dayNum, epochStr) {
   const epoch = new Date(epochStr + 'T00:00:00Z');
   const d = new Date(epoch.getTime() + dayNum * 86400000);
@@ -67,6 +71,7 @@ function applyFilters(bundle, filters) {
 
   const life = bundle.life.filter(l => {
     const [, refIdx, , , , estadoIdx, , , , minaIdx, equipoIdx, fechaFinal, , , operadorIdx] = l;
+    if (PIEZAS_GENERICAS.has(l[0])) return false;
     if (minaSet && !minaSet.has(dict.mina[minaIdx])) return false;
     if (equipoSet && !equipoSet.has(dict.equipo[equipoIdx])) return false;
     if (refSet && !refSet.has(dict.ref[refIdx])) return false;
@@ -130,6 +135,13 @@ function kpiTotals(bundle, prod, life) {
   const closed = used.filter(l => dict.estado[l[5]] === 'INACTIVO');
   const ratios = closed.filter(l => l[4]).map(l => l[3] / l[4]);
   const cumplimientoGlobal = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length * 100 : null;
+  // El promedio simple se infla con unas pocas piezas muy por encima de su garantizado: la mediana y el promedio
+  // ponderado por metros (Σ metros / Σ garantizado) dan una lectura más robusta.
+  const ratiosOrd = ratios.slice().sort((a, b) => a - b);
+  const cumplimientoMediana = ratiosOrd.length ? (ratiosOrd.length % 2 ? ratiosOrd[(ratiosOrd.length - 1) / 2] : (ratiosOrd[ratiosOrd.length / 2 - 1] + ratiosOrd[ratiosOrd.length / 2]) / 2) * 100 : null;
+  const conGar = closed.filter(l => l[4]);
+  const sumMg = conGar.reduce((a, l) => a + l[4], 0);
+  const cumplimientoPonderado = sumMg ? conGar.reduce((a, l) => a + l[3], 0) / sumMg * 100 : null;
 
   // recoverable meters: pieces retired for operational reasons (not end-of-life) that fell short of guarantee
   let recuperableM = 0, recuperableUSD = 0;
@@ -146,7 +158,7 @@ function kpiTotals(bundle, prod, life) {
     totalMetros, byMonth, toolsByMonth, months,
     piezasActivas: piezasSet.size, referenciasActivas: refSet.size,
     promedioCompletos, promedioTodos,
-    cumplimientoGlobal, nCiclosCerrados: closed.length, nUsadas: used.length,
+    cumplimientoGlobal, cumplimientoMediana, cumplimientoPonderado, nCiclosCerrados: closed.length, nUsadas: used.length,
     recuperableM, recuperableUSD,
   };
 }
@@ -671,7 +683,7 @@ function panelRendimientoPiezas(bundle, life, prod) {
     const prev = ultimaFechaPorCodigo.get(codigo);
     if (prev === undefined || fecha > prev) ultimaFechaPorCodigo.set(codigo, fecha);
   }
-  return life.filter(l => l[3] > 0).map(l => {
+  return life.filter(l => l[3] > 0 && !PIEZAS_GENERICAS.has(l[0])).map(l => {
     const [cm, refIdx, herrIdx, mp, mg, , , , , minaIdx] = l;
     const ratio = mg ? mp / mg * 100 : null;
     const ultimaFecha = ultimaFechaPorCodigo.get(cm);

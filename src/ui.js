@@ -263,7 +263,7 @@ function applyDatePreset(kind) {
 }
 
 // ============ KPI cards ============
-function renderKPICards(kpis, vidaUtil, activasHoy) {
+function renderKPICards(kpis, vidaUtil, activasHoy, activasSinReporte) {
   const row = document.getElementById('kpiRow');
   const lastMonth = kpis.months.length ? kpis.months[kpis.months.length - 1] : null;
   const activeLastMonth = lastMonth ? kpis.toolsByMonth.get(lastMonth).size : 0;
@@ -276,9 +276,9 @@ function renderKPICards(kpis, vidaUtil, activasHoy) {
     { label: 'Promedio mensual', value: fmtNum(kpis.promedioCompletos || kpis.promedioTodos) + ' <small>m/mes</small>', sub: 'Excluye meses parciales en los extremos' },
     { label: 'Códigos con metros', value: fmtNum(activeLastMonth), sub: lastMonth ? `En ${esc(ymLabel(lastMonth))}` : '—' },
     { label: 'Referencias con metros', value: fmtNum(kpis.referenciasActivas), sub: `${fmtNum(kpis.piezasActivas)} piezas con metros en el periodo filtrado` },
-    { label: 'Herramientas activas hoy', value: fmtNum(activasHoy), sub: 'Piezas en estado Activo en la mina — no depende del rango de fechas' },
+    { label: 'Herramientas activas hoy', value: fmtNum(activasHoy), sub: `Piezas en estado Activo en la mina — no depende del rango de fechas${activasSinReporte ? ` · ${fmtNum(activasSinReporte)} sin reportes en 45 días o más` : ''}` },
     { label: 'Metros / herramienta activa', value: fmtNum(Math.round(avgPerToolMonth)) + ' <small>m/mes</small>', sub: 'Promedio del periodo filtrado' },
-    { label: 'Cumplimiento global', value: (kpis.cumplimientoGlobal !== null ? kpis.cumplimientoGlobal.toFixed(1) + '<small>%</small>' : '—'), sub: `${kpis.nCiclosCerrados} piezas con ciclo cerrado` },
+    { label: 'Cumplimiento global', value: (kpis.cumplimientoGlobal !== null ? kpis.cumplimientoGlobal.toFixed(1) + '<small>%</small>' : '—'), sub: `${kpis.nCiclosCerrados} piezas con ciclo cerrado${kpis.cumplimientoMediana !== null && kpis.cumplimientoMediana !== undefined ? ` · mediana ${kpis.cumplimientoMediana.toFixed(0)}% · ponderado ${kpis.cumplimientoPonderado.toFixed(0)}%` : ''}` },
   ];
   if (!presentationMode) {
     cards.push({ label: 'Oportunidad recuperable', value: 'USD ' + fmtCompact(Math.round(kpis.recuperableUSD)), sub: `${fmtCompact(kpis.recuperableM)} m de herramienta que faltaron en piezas dadas de baja antes de cumplir su garantía (no son metros perforados)` });
@@ -1063,11 +1063,25 @@ function renderMeta(kpis) {
 
 // ============ orchestrator ============
 let currentProd = [], currentLife = [];
+// Fecha (día) del último reporte de cada pieza y del último reporte de toda la base; se guarda por bundle.
+const _ultimoReporteCache = new WeakMap();
+function ultimoReportePorCodigo(bundle) {
+  let r = _ultimoReporteCache.get(bundle);
+  if (!r) {
+    const mapa = new Map(); let maxDia = 0;
+    for (const p of bundle.prod) { const c = p[6], f = p[0]; if (f > maxDia) maxDia = f; if (c && (mapa.get(c) ?? -1) < f) mapa.set(c, f); }
+    r = { mapa, maxDia }; _ultimoReporteCache.set(bundle, r);
+  }
+  return r;
+}
 function renderAll() {
   const { prod, life } = applyFilters(BUNDLE, filters);
   currentProd = prod; currentLife = life;
   const kpis = kpiTotals(BUNDLE, prod, life);
-  renderKPICards(kpis, vidaUtilGlobal(BUNDLE, life), life.filter(l => BUNDLE.dict.estado[l[5]] === 'ACTIVO').length);
+  const activas = life.filter(l => BUNDLE.dict.estado[l[5]] === 'ACTIVO');
+  const ult = ultimoReportePorCodigo(BUNDLE);
+  const activasSinReporte = activas.filter(l => (ult.mapa.get(l[0]) ?? -1) < ult.maxDia - 45).length;
+  renderKPICards(kpis, vidaUtilGlobal(BUNDLE, life), activas.length, activasSinReporte);
   renderMonthlyChart(kpis);
   renderActiveToolsChart(kpis);
   renderToolsChart(byHerramientaProd(BUNDLE, prod, null));
@@ -2101,7 +2115,7 @@ function drRowHtml(vals) {
   const tipoSel = `<div class="filter-group"><label>Tipo</label><select class="dr-tipo"><option value="">Elige…</option>${TIPOS_PERFORACION.map(t => `<option value="${esc(t)}" ${t === tipo ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
   return `<div class="dr-row">${tipoSel}${selects}
     <div class="filter-group"><label>Barrenos</label><input type="number" class="dr-barrenos" min="0" step="1" inputmode="numeric" value="${vals.barrenos ?? ''}"></div>
-    <div class="filter-group"><label>Longitud (m)</label><input type="number" class="dr-longitud" min="0" step="0.01" inputmode="decimal" value="${vals.longitud ?? ''}"></div>
+    <div class="filter-group"><label>Longitud (m)</label><input type="number" class="dr-longitud" min="0" max="4.5" step="0.01" inputmode="decimal" value="${vals.longitud ?? ''}"></div>
     <div class="dr-metros-out"><span class="dr-metros-label">Metros</span><span class="dr-metros-val">0</span></div>
     <button type="button" class="small ghost danger dr-row-remove">Quitar</button>
   </div>`;
@@ -2248,6 +2262,7 @@ async function saveDailyReport() {
   const byCodigo = new Map(dailyReportState.activeTools.map(r => [r.codigo_marcado, r]));
   const head = { fecha, mina, tipo, equipo, operador, operador2: v('drOperador2') || null, turno: v('drTurno') || null, jornada: v('drJornada') || null, reporte_no: v('drReporteNo') || null, frente: v('drFrente') || null };
   const entries = [];
+  const avisos = [];
   const rows = drReadRows();
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -2255,8 +2270,17 @@ async function saveDailyReport() {
     if (!tools.length && !(r.barrenos > 0) && !(r.longitud > 0)) continue; // fila vacía
     if (!tools.length) { showDrError(`Fila ${i + 1}: elige al menos una herramienta.`); return; }
     if (!(r.barrenos > 0) || !(r.longitud > 0)) { showDrError(`Fila ${i + 1}: escribe la cantidad de barrenos y la longitud.`); return; }
+    // Validaciones de digitación (un 240 en vez de 2,4 infló el rendimiento de 4 herramientas): la longitud es por barreno.
+    if (!Number.isInteger(r.barrenos)) { showDrError(`Fila ${i + 1}: los barrenos deben ser un número entero (escribiste ${r.barrenos}).`); return; }
+    if (r.longitud < 0.5 || r.longitud > 4.5) {
+      const sug = [r.longitud / 100, r.longitud / 10].find(v => v >= 0.5 && v <= 4.5);
+      showDrError(`Fila ${i + 1}: la longitud ${fmtNum(r.longitud, 2)} m por barreno no es válida (debe estar entre 0,5 y 4,5 m).${sug ? ` ¿Quisiste escribir ${fmtNum(sug, 2)}?` : ''}`);
+      return;
+    }
     const tipoFila = r.tipo || tipo; // cada fila lleva su propio tipo (avance, escariado o sostenimiento), como el formato en papel
     if (!tipoFila) { showDrError(`Fila ${i + 1}: elige el tipo de perforación (avance, escariado o sostenimiento).`); return; }
+    const umbralBarrenos = tipoFila === 'SOSTENIMIENTO' ? 80 : 40;
+    if (r.barrenos > umbralBarrenos || drMetros(r) > 150) avisos.push(`Fila ${i + 1}: ${fmtNum(r.barrenos)} barrenos × ${fmtNum(r.longitud, 2)} m = ${fmtNum(drMetros(r), 1)} m en una sola fila (lo habitual es menos de ${umbralBarrenos} barrenos)`);
     const grupo = drNewGroupId();
     const metros = drMetros(r);
     tools.forEach((cm, k) => {
@@ -2265,6 +2289,10 @@ async function saveDailyReport() {
     });
   }
   if (!entries.length) { showDrError('Agrega al menos una fila con herramientas, barrenos y longitud.'); return; }
+  if (avisos.length && !confirm(`Revisa estos valores antes de guardar:\n\n${avisos.map(a => '• ' + a).join('\n')}\n\nSi hay un error de digitación (por ejemplo 100 en vez de 10), cancela y corrígelo: una fila así infla el rendimiento de sus 4 herramientas.\n\n¿Guardar tal como está?`)) {
+    showDrError('No se guardó: revisa los barrenos y la longitud de las filas señaladas.');
+    return;
+  }
 
   if (drSaving) return; // ya hay un guardado en curso (doble clic / toque repetido)
   drSaving = true;
@@ -3119,6 +3147,7 @@ function wireDataEvents() {
   once('dataCheckAcumBtn', 'click', dataCheckAcumulados);
   once('dataCheckPrimBtn', 'click', dataCheckPrincipales);
   once('dataCheckRepBtn', 'click', dataCheckRepetidas);
+  once('dataCheckAtipBtn', 'click', dataCheckAtipicos);
   once('dataCheckResult', 'click', (e) => {
     if (e.target.closest('#dataFixAcumBtn')) dataFixAcumulados();
     if (e.target.closest('#dataFixPrimBtn')) dataFixPrincipales();
@@ -3424,6 +3453,40 @@ async function dataFixRepetidas() {
   } catch (e) {
     document.getElementById('dataCheckResult').insertAdjacentHTML('beforeend', `<p class="login-error">No se pudo eliminar (${esc(e.message)}). Vuelve a revisar antes de intentarlo otra vez.</p>`);
   }
+}
+
+// Filas de reporte con valores sospechosos de error de digitación: longitud fuera de 0,5–4,5 m, barrenos muy por encima
+// de lo habitual del mismo taladro y tipo, más de 150 m en una sola fila, metros que no cuadran con barrenos × longitud
+// o fila incompleta (menos de 4 herramientas). El valor correcto NO se puede deducir de los datos: se compara con el papel.
+async function dataCheckAtipicos() {
+  const out = document.getElementById('dataCheckResult');
+  out.innerHTML = '<p class="chart-sub">Calculando…</p>';
+  try {
+    const prod = await CTAuth.fetchTable('produccion');
+    dataState.cache.produccion = prod;
+    const grupos = new Map();
+    prod.forEach(p => { if (!p.grupo_id) return; if (!grupos.has(p.grupo_id)) grupos.set(p.grupo_id, []); grupos.get(p.grupo_id).push(p); });
+    const filas = Array.from(grupos.values()).map(rows => ({ rows, f: rows[0], n: rows.length, id: Math.min(...rows.map(r => r.id)) }));
+    const bar = new Map();
+    filas.forEach(x => { const k = x.f.equipo + '|' + x.f.tipo; if (!bar.has(k)) bar.set(k, []); bar.get(k).push(Number(x.f.barrenos) || 0); });
+    const p95 = (k) => { const a = (bar.get(k) || []).slice().sort((u, v) => u - v); return a.length ? a[Math.min(a.length - 1, Math.floor(a.length * 0.95))] : 0; };
+    const lista = [];
+    filas.forEach(x => {
+      const b = Number(x.f.barrenos) || 0, l = Number(x.f.longitud) || 0, m = Number(x.f.metros) || 0, p = p95(x.f.equipo + '|' + x.f.tipo);
+      const motivos = [];
+      if (l < 0.5 || l > 4.5) motivos.push(`longitud ${fmtNum(l, 2)} m`);
+      if (b > Math.max(40, p * 1.8)) motivos.push(`${fmtNum(b)} barrenos (lo habitual del equipo: hasta ${fmtNum(p)})`);
+      if (m > 150) motivos.push(`${fmtNum(m, 0)} m en una fila`);
+      if (Math.abs(m - b * l) > 0.05) motivos.push('metros ≠ barrenos × longitud');
+      if (x.n < 4) motivos.push(`solo ${x.n} herramienta${x.n === 1 ? '' : 's'}`);
+      if (motivos.length) lista.push({ x, motivos, m });
+    });
+    lista.sort((u, v) => v.m - u.m);
+    if (!lista.length) { out.innerHTML = `<p class="data-check-ok">Ninguna de las ${fmtNum(filas.length)} filas de reporte tiene valores sospechosos.</p>`; return; }
+    const filaHtml = ({ x, motivos }) => `<tr><td>${esc(String(x.f.fecha))}</td><td>${esc(x.f.mina || '')}</td><td>${esc(x.f.equipo || '')}</td><td>${esc(x.f.operador || '')}</td><td>${esc(x.f.tipo || '')}</td><td>${esc(x.rows.map(r => r.codigo_marcado).join(', '))}</td><td class="num">${fmtNum(x.f.barrenos)} × ${fmtNum(x.f.longitud, 2)}</td><td class="num">${fmtNum(x.f.metros, 1)}</td><td>${esc(motivos.join('; '))}</td></tr>`;
+    out.innerHTML = `<p class="data-check-warn">${fmtNum(lista.length)} de ${fmtNum(filas.length)} filas de reporte tienen valores sospechosos. Compáralas con el formato en papel y corrige el dato desde «Datos» (tabla producción): el valor correcto no se puede deducir.</p>
+      <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Mina</th><th>Equipo</th><th>Operador</th><th>Tipo</th><th>Herramientas</th><th class="num">Barrenos × m</th><th class="num">Metros</th><th>Motivo</th></tr></thead><tbody>${lista.slice(0, 60).map(filaHtml).join('')}</tbody></table></div>${lista.length > 60 ? `<p class="chart-sub">Se muestran las 60 de mayor metraje de ${fmtNum(lista.length)}.</p>` : ''}`;
+  } catch (e) { out.innerHTML = `<p class="login-error">No se pudo revisar (${esc(e.message)}).</p>`; }
 }
 
 function populatePresentationMineSelect() {
